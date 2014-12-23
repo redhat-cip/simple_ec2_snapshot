@@ -4,10 +4,12 @@
 
 # Dependancies:
 # - python colorama
-# On Debian: aptitude install python-colorama
+# - python boto
+# On Debian: aptitude install python-colorama python-boto
 
 import argparse
 import sys
+import boto.ec2
 # import time
 from colorama import init, Fore
 
@@ -44,15 +46,53 @@ class ManageSnapshot:
 
     # Constructor
     def __init__(self, region, key_id, access_key, instance, tag, action):
-        self.region = region
-        self.key_id = key_id
-        self.access_key = access_key
-        self.instance = instance
-        self.tag = tag
-        self.action = action
+        self._region = region
+        self._key_id = key_id
+        self._access_key = access_key
+        self._instance = ','.split(instance)
+        self._tag = tag
+        self._action = action
+        self._conn = self._validate_aws_connection()
+        self._items = []
+        # If no instances specified select all
+        if (self._instance[0] == 'all'):
+            # If no tags are specified, print everything
+            if (self._tag[0] != None):
+                self._get_filtred_instances()
+            else:
+                # Set tags filters
+                self._get_filtred_instances()
+
+    def _validate_aws_connection(self):
+        """
+        Validate if AWS connection is OK or not
+        """
+        c = False
+        try:
+            c = boto.ec2.connect_to_region(self._region,
+                                           aws_access_key_id=self._key_id,
+                                           aws_secret_access_key=self._access_key)
+        except IndexError, e:
+            print("Can't connect with the credentials: %s" % e)
+            sys.exit(1)
+        return(c)
+
+    def _get_filtred_instances(self):
+        """
+        Print filtred instances
+        :returns: @todo
+        """
 
     def get_listInstances(self):
-        print self.action
+        """
+        Get all instances
+        """
+
+
+        stats = self._conn.get_all_volume_status()
+        for stat in stats:
+            print(stat)
+            print "id %s status %s %s" % (stat.id, stat.volume_status, stat.zone)
 
 
 def args():
@@ -64,21 +104,21 @@ def args():
 
     # Main informations
     parser = argparse.ArgumentParser(
-        description='Amazon Snapshot utility',
+        description='Simple EC2 Snapshot utility',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # Default args
     parser.add_argument('-r',
                         '--region',
                         action='store',
                         type=str,
-                        # required=True,
+                        required=True,
                         metavar='REGION',
                         help='Set AWS region (ex: eu-west-1)')
     parser.add_argument('-k',
                         '--key_id',
                         action='store',
                         type=str,
-                        # required=True,
+                        required=True,
                         metavar='KEY_ID',
                         help='Set AWS Key ID')
     parser.add_argument('-a',
@@ -86,12 +126,13 @@ def args():
                         action='store',
                         type=str,
                         metavar='ACCESS_KEY',
-                        # required=True,
+                        required=True,
                         help='Set AWS Access Key')
     parser.add_argument('-i',
                         '--instance',
                         action='store',
                         type=str,
+                        default='all',
                         metavar='INSTANCE_NAME',
                         help='Instance ID (ex: i-00000000')
     parser.add_argument('-t',
@@ -105,6 +146,7 @@ def args():
     parser.add_argument('-o',
                         '--action',
                         choices=['list', 'snapshot', 'restore'],
+                        required=True,
                         action='store',
                         help='List available instances')
     parser.add_argument('-v',
@@ -120,25 +162,11 @@ def args():
         parser.print_help()
         sys.exit(1)
 
-    if (a.region):
-        region = a.region
-    if (a.key_id):
-        key_id = a.key_id
-    if (a.access_key):
-        access_key = a.access_key
-    if (a.instance):
-        instance = a.instance
-    if (a.tag):
-        tag = a.tag
-    if (a.action):
-        action = a.action
-        snapshot = ManageSnapshot(region, key_id, access_key, instance, tag,
-                                  action)
-        if (action == 'list'):
-            snapshot.get_listInstances()
-    else:
-        print 'You need to choose an action'
-        sys.exit(1)
+    action = a.action
+    snapshot = ManageSnapshot(a.region, a.key_id, a.access_key, a.instance,
+                              a.tag, a.action)
+    if (action == 'list'):
+        snapshot.print_filtred_instances()
 
 
 def main():
