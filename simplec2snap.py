@@ -39,29 +39,44 @@ def print_color(mtype, message=''):
         print(Fore.CYAN + 'UPDATED')
 
 
+class Instance:
+    """
+    Contruct instances
+    """
+
+    def __init__(self, iid):
+        self.instance = iid
+        self.disks = []
+
+    def add_disk(self, vol, device):
+        disk = {vol: device}
+        self.disks.append(disk)
+
+
 class ManageSnapshot:
     """
     Manage AWS Snapshot
     """
 
-    # Constructor
     def __init__(self, region, key_id, access_key, instance, tag, action):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
-        self._instance = ','.split(instance)
+        self._instance = instance.split(',')
         self._tag = tag
         self._action = action
         self._conn = self._validate_aws_connection()
-        self._items = []
+        self._iids = []
         # If no instances specified select all
         if (self._instance[0] == 'all'):
             # If no tags are specified, print everything
-            if (self._tag[0] != None):
+            if (self._tag[0] is not None):
                 self._get_filtred_instances()
             else:
                 # Set tags filters
                 self._get_filtred_instances()
+        else:
+            self._get_instance_info(instance)
 
     def _validate_aws_connection(self):
         """
@@ -77,6 +92,26 @@ class ManageSnapshot:
             sys.exit(1)
         return(c)
 
+    def _get_instance_info(self, iid):
+        """
+        Get instances info from an ID
+
+        :iid: instance ID
+        :returns: @todo
+        """
+        filter = {'attachment.instance-id': iid}
+        vol = self._conn.get_all_volumes(filters=filter)
+        # Add this one to the list of ids
+        self._iids.append(iid)
+        for device in vol:
+            filter = {'block-device-mapping.volume-id': device.id}
+            volumesinstance = self._conn.get_all_instances(filters=filter)
+            ids = [z for k in volumesinstance for z in k.instances]
+            for s in ids:
+                print ' - '.join([s.id,
+                                  device.id,
+                                  device.attach_data.device])
+
     def _get_filtred_instances(self):
         """
         Print filtred instances
@@ -87,12 +122,10 @@ class ManageSnapshot:
         """
         Get all instances
         """
-
-
         stats = self._conn.get_all_volume_status()
         for stat in stats:
             print(stat)
-            print "id %s status %s %s" % (stat.id, stat.volume_status, stat.zone)
+            print "id %s statu %s %s" % (stat.id, stat.volume_status, stat.zone)
 
 
 def args():
@@ -134,7 +167,8 @@ def args():
                         type=str,
                         default='all',
                         metavar='INSTANCE_NAME',
-                        help='Instance ID (ex: i-00000000')
+                        help=' '.join(['Instance ID (ex: i-00000000)'
+                                       'or with comma separation']))
     parser.add_argument('-t',
                         '--tag',
                         action='store',
@@ -155,18 +189,24 @@ def args():
                         version='v0.1 Licence GPLv2',
                         help='Print version number')
 
-    a = parser.parse_args()
-
     # Print help if no args supplied
     if (len(sys.argv) == 1):
         parser.print_help()
         sys.exit(1)
 
+    a = parser.parse_args()
+
+    # Exit if no instance or tag has been set
+    if a.instance == 'all' and a.tag[0] is None:
+        print_color('fail', ' '.join(['Please set at least an instance ID',
+                                      'or a tag with its value']))
+        sys.exit(1)
+
     action = a.action
-    snapshot = ManageSnapshot(a.region, a.key_id, a.access_key, a.instance,
-                              a.tag, a.action)
-    if (action == 'list'):
-        snapshot.print_filtred_instances()
+    ManageSnapshot(a.region, a.key_id, a.access_key, a.instance,
+                   a.tag, a.action)
+    # if (action == 'list'):
+    #    snapshot.print_filtred_instances()
 
 
 def main():
