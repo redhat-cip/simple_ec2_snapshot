@@ -4,15 +4,14 @@
 # eNovance / RedHat
 
 # Dependancies:
-# - python colorama
 # - python boto
-# On Debian: aptitude install python-colorama python-boto
+# On Debian: aptitude install python-boto
 
 import argparse
 import sys
 import boto.ec2
 import time
-from colorama import init, Fore
+
 
 def print_color(mtype, message=''):
     """@todo: Docstring for print_text.
@@ -23,19 +22,12 @@ def print_color(mtype, message=''):
     :type message: str
     """
 
-    init(autoreset=True)
-    if mtype == 'ok':
-        print(''.join([Fore.GREEN, 'OK']))
-    elif mtype == '+':
-        print(''.join(['[+] ',message]))
-    elif mtype == 'fail':
-        print(''.join([Fore.RED, "\n[!]", message]))
+    if mtype == '+':
+        print(''.join(['[+] ', message]))
     elif mtype == 'sub':
         print(''.join(['  -> ', message])),
     elif mtype == 'subsub':
         print(''.join(['    -> ', message]))
-    elif mtype == 'up':
-        print(''.join([Fore.CYAN, 'UPDATED']))
 
 
 class Instance:
@@ -146,7 +138,7 @@ class ManageSnapshot:
             for vol, device in disks.iteritems():
                 print_color('sub', ''.join([vol, ' - ', device, "\n"]))
 
-    def make_Snapshot(self, keep_state):
+    def make_Snapshot(self, no_hot_backup):
         """
         Create snapshot on selected Instances ids
         """
@@ -154,7 +146,7 @@ class ManageSnapshot:
             print_color('+', ''.join([iid.instance_id, ' (', iid.name, ')']))
 
             # Pausing VM
-            if keep_state == False:
+            if no_hot_backup is True:
                 print_color('sub', "Shutting down instance\n")
                 self._conn.stop_instances(instance_ids=[iid.instance_id])
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'stopped':
@@ -166,11 +158,24 @@ class ManageSnapshot:
             print_color('sub', "Creating Snapshot\n")
             disks = iid.get_disks()
             for vol, device in disks.iteritems():
-                snapshot_id = self._conn.create_snapshot(vol, ''.join([iid.instance_id, ' (', iid.name, ') - ', device, ' (', vol, ')']))
-                print_color('subsub', ' '.join(['Creating snapshot of', device, ':', str(snapshot_id.id)])),
+                snap_id = self._conn.create_snapshot(vol,
+                                                     ''.join([iid.instance_id,
+                                                              ' (',
+                                                              iid.name,
+                                                              ') - ',
+                                                              device,
+                                                              ' (',
+                                                              vol,
+                                                              ')']))
+                print_color('subsub', ' '.join(['Creating snapshot of',
+                                                device,
+                                                '(',
+                                                vol,
+                                                ') :',
+                                                str(snap_id.id)])),
 
             # Starting VM
-            if keep_state == False:
+            if no_hot_backup is True:
                 print_color('sub', "Starting instance\n")
                 self._conn.start_instances(instance_ids=[iid.instance_id])
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'running':
@@ -216,7 +221,7 @@ def args():
                         '--instance',
                         action='append',
                         metavar='INSTANCE_NAME',
-                        help=' '.join(['Instance ID (ex: i-00000000 or all)'
+                        help=' '.join(['Instance ID (ex: i-00000000 or all)',
                                        'or with comma separation']))
     parser.add_argument('-t',
                         '--tag',
@@ -232,11 +237,12 @@ def args():
                         required=True,
                         action='store',
                         help='Set action to make')
-    parser.add_argument('-K',
-                        '--keep_state',
+    parser.add_argument('-H',
+                        '--no_hot_backup',
                         action='store_true',
                         default=False,
-                        help='Keep instance current state (for hot snapshot)')
+                        help=' '.join(['Make cold backup for a better',
+                                       'consistency (Recommended)']))
     parser.add_argument('-v',
                         '--version',
                         action='version',
@@ -257,14 +263,14 @@ def args():
 
     # Create action
     action = a.action
-    selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key, a.instance,
-                   a.tag, a.action)
+    selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
+                                       a.instance, a.tag, a.action)
 
     # Launch chosen action
     if action == 'list':
         selected_intances.get_Instances()
     elif action == 'snapshot':
-        selected_intances.make_Snapshot(a.keep_state)
+        selected_intances.make_Snapshot(a.no_hot_backup)
     sys.exit(0)
 
 
