@@ -13,7 +13,7 @@ import boto.ec2
 import time
 
 
-def print_color(mtype, message=''):
+def custom_print(mtype, message=''):
     """@todo: Docstring for print_text.
 
     :mtype: set if message is 'ok', 'updated', '+', 'fail' or 'sub'
@@ -25,9 +25,11 @@ def print_color(mtype, message=''):
     if mtype == '+':
         print(''.join(['[+] ', message]))
     elif mtype == 'sub':
-        print(''.join(['  -> ', message])),
+        print(''.join(['  => ', message])),
     elif mtype == 'subsub':
-        print(''.join(['    -> ', message]))
+        print(''.join(['    - ', message])),
+    elif mtype == 'fail':
+        print(''.join(['[FAIL] ', message]))
 
 
 class Instance:
@@ -75,22 +77,24 @@ class ManageSnapshot:
     Manage AWS Snapshot
     """
 
-    def __init__(self, region, key_id, access_key, instance_list, tag, action):
+    def __init__(self, region, key_id, access_key, instance_list, tags, action):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
-        self._instance = instance_list
-        self._tag = tag
+        self._instance_list = instance_list
+        self._tags = tags
         self._action = action
         self._instances = []
         self._conn = self._validate_aws_connection()
-        self._set_instance_info(instance_list)
+        self._filter_instances()
+        self._set_instance_info()
 
     def _validate_aws_connection(self):
         """
         Validate if AWS connection is OK or not
         """
         c = False
+        custom_print('+', 'Validating AWS connection')
         try:
             c = boto.ec2.connect_to_region(self._region,
                                            aws_access_key_id=self._key_id,
@@ -100,7 +104,7 @@ class ManageSnapshot:
             sys.exit(1)
         return(c)
 
-    def _set_instance_info(self, instance_list):
+    def _set_instance_info(self):
         """
         Set instances info from an ID
         This will construct an object containing disks attributes
@@ -109,8 +113,10 @@ class ManageSnapshot:
         :type instance_list: list
         :returns: nothing
         """
+        # Remove doubles
+        self._instance_list = list(set(self._instance_list))
         # Create Instance object
-        for iid in instance_list:
+        for iid in self._instance_list:
             # Get reservation id
             rid = self._conn.get_all_instances(instance_ids=iid)[0].id
             # Set instance name
@@ -128,34 +134,55 @@ class ManageSnapshot:
                 for s in ids:
                     instance_id.add_disk(device.id, device.attach_data.device)
 
+    def _filter_instances(self):
+        """
+        Filter instances by tag
+        """
+        custom_print('+', 'Getting instances information')
+        if len(self._tags) > 0:
+            # Create a dictionary with tags to create filters
+            filter_tags = {}
+            for tag in self._tags:
+                key = ''.join(['tag:', tag[0]])
+                value = tag[1]
+                filter_tags[key] = value
+
+            reservations = self._conn.get_all_instances(filters=filter_tags)
+            instances = [i for r in reservations for i in r.instances]
+            for instance in instances:
+                self._instance_list.append(instance.id)
+
     def get_Instances(self):
         """
         Get all instances
         """
-        for iid in self._instances:
-            print_color('+', ''.join([iid.instance_id, ' (', iid.name, ')']))
-            disks = iid.get_disks()
-            for vol, device in disks.iteritems():
-                print_color('sub', ''.join([vol, ' - ', device, "\n"]))
+        if (len(self._instances) == 0):
+            print('No instances found with those parameters !')
+        else:
+            for iid in self._instances:
+                custom_print('sub', ''.join([iid.instance_id, ' (', iid.name, ')', "\n"]))
+                disks = iid.get_disks()
+                for vol, device in disks.iteritems():
+                    custom_print('subsub', ''.join([vol, ' - ', device, "\n"]))
 
     def make_Snapshot(self, no_hot_backup):
         """
         Create snapshot on selected Instances ids
         """
         for iid in self._instances:
-            print_color('+', ''.join([iid.instance_id, ' (', iid.name, ')']))
+            custom_print('+', ''.join([iid.instance_id, ' (', iid.name, ')']))
 
             # Pausing VM
             if no_hot_backup is True:
-                print_color('sub', "Shutting down instance\n")
+                custom_print('sub', "Shutting down instance\n")
                 self._conn.stop_instances(instance_ids=[iid.instance_id])
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'stopped':
-                    print_color('subsub', "Please wait while stopping...")
+                    custom_print('subsub', ''.join(['Please wait while stopping...', "\n"]))
                     time.sleep(5)
-                print_color('sub', "Now stopped !\n")
+                custom_print('sub', "Now stopped !\n")
 
             # Creating Snapshot
-            print_color('sub', "Creating Snapshot\n")
+            custom_print('sub', "Creating Snapshot\n")
             disks = iid.get_disks()
             for vol, device in disks.iteritems():
                 snap_id = self._conn.create_snapshot(vol,
@@ -167,28 +194,28 @@ class ManageSnapshot:
                                                               ' (',
                                                               vol,
                                                               ')']))
-                print_color('subsub', ' '.join(['Creating snapshot of',
-                                                device,
-                                                '(',
-                                                vol,
-                                                ') :',
-                                                str(snap_id.id)])),
+                custom_print('subsub', ' '.join(['Creating snapshot of',
+                                                 device,
+                                                 '(',
+                                                 vol,
+                                                 ') :',
+                                                 str(snap_id.id),
+                                                 "\n"])),
 
             # Starting VM
             if no_hot_backup is True:
-                print_color('sub', "Starting instance\n")
+                custom_print('sub', "Starting instance\n")
                 self._conn.start_instances(instance_ids=[iid.instance_id])
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'running':
-                    print_color('subsub', "Please wait while starting...")
+                    custom_print('subsub', ''.join(['Please wait while starting...', "\n"]))
                     time.sleep(5)
-                print_color('sub', "Instance started !\n")
+                custom_print('sub', "Instance started !\n")
 
 
 def args():
     """
     Manage args
     """
-
     global region, key_id, access_key, instance, action, tag
 
     # Main informations
@@ -220,17 +247,17 @@ def args():
     parser.add_argument('-i',
                         '--instance',
                         action='append',
-                        metavar='INSTANCE_NAME',
-                        help=' '.join(['Instance ID (ex: i-00000000 or all)',
-                                       'or with comma separation']))
+                        default=[],
+                        metavar='INSTANCE_ID',
+                        help=' '.join(['Instance ID (ex: i-00000000 or all)']))
     parser.add_argument('-t',
-                        '--tag',
-                        action='store',
+                        '--tags',
+                        action='append',
                         type=str,
-                        default=[None, None],
-                        metavar='TAG',
+                        default=[],
+                        metavar='ARG',
                         nargs=2,
-                        help='Select a tag with its value (ex: tagname value)')
+                        help='Select tags with their values (ex: tagname value)')
     parser.add_argument('-o',
                         '--action',
                         choices=['list', 'snapshot'],
@@ -256,23 +283,21 @@ def args():
     a = parser.parse_args()
 
     # Exit if no instance or tag has been set
-    if not a.instance and a.tag[0] is None:
-        print_color('fail', ' '.join(['Please set at least an instance ID',
+    if a.instance is None and a.tags is None:
+        custom_print('fail', ' '.join(['Please set at least an instance ID',
                                       'or a tag with its value']))
         sys.exit(1)
-
-    # Create action
-    action = a.action
-    selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
-                                       a.instance, a.tag, a.action)
-
-    # Launch chosen action
-    if action == 'list':
-        selected_intances.get_Instances()
-    elif action == 'snapshot':
-        selected_intances.make_Snapshot(a.no_hot_backup)
-    sys.exit(0)
-
+    else:
+        # Create action
+        action = a.action
+        selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
+                                           a.instance, a.tags, a.action)
+        # Launch chosen action
+        if action == 'list':
+            selected_intances.get_Instances()
+        elif action == 'snapshot':
+            selected_intances.make_Snapshot(a.no_hot_backup)
+        sys.exit(0)
 
 def main():
     """
