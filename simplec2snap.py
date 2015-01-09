@@ -10,6 +10,9 @@
 import argparse
 import sys
 import boto.ec2
+import ConfigParser
+import os
+from os.path import expanduser
 import time
 
 
@@ -222,28 +225,43 @@ def args():
     parser = argparse.ArgumentParser(
         description='Simple EC2 Snapshot utility',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    # Default args
+
+    # Command args
     parser.add_argument('-r',
                         '--region',
                         action='store',
                         type=str,
-                        required=True,
+                        default=None,
                         metavar='REGION',
                         help='Set AWS region (ex: eu-west-1)')
     parser.add_argument('-k',
                         '--key_id',
                         action='store',
                         type=str,
-                        required=True,
+                        default=None,
                         metavar='KEY_ID',
                         help='Set AWS Key ID')
     parser.add_argument('-a',
                         '--access_key',
                         action='store',
                         type=str,
+                        default=None,
                         metavar='ACCESS_KEY',
-                        required=True,
                         help='Set AWS Access Key')
+    parser.add_argument('-c',
+                        '--credentials',
+                        action='store',
+                        type=str,
+                        default=''.join([expanduser("~"), '/.aws_cred']),
+                        metavar='CREDENTIALS',
+                        help='Credentials file path')
+    parser.add_argument('-p',
+                        '--profile',
+                        action='store',
+                        type=str,
+                        default='default',
+                        metavar='CRED_PROFILE',
+                        help='Credentials profile file defined in credentials file')
     parser.add_argument('-i',
                         '--instance',
                         action='append',
@@ -281,6 +299,21 @@ def args():
         parser.print_help()
         sys.exit(1)
     a = parser.parse_args()
+
+    # Read credential file and override by command args
+    if os.path.isfile(a.credentials):
+        if os.access(a.credentials,  os.R_OK):
+            config = ConfigParser.ConfigParser()
+            config.read([str(a.credentials)])
+            if a.region is None:
+                a.region = config.get(a.profile, 'aws_region')
+            if a.access_key is None:
+                a.access_key = config.get(a.profile, 'aws_secret_access_key')
+            if a.key_id is None:
+                a.key_id = config.get(a.profile, 'aws_access_key_id')
+        else:
+            print('fail', "Can't have permission to read credentials file")
+            sys.exit(1)
 
     # Exit if no instance or tag has been set
     if a.instance is None and a.tags is None:
