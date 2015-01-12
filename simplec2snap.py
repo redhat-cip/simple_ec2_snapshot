@@ -6,18 +6,19 @@
 # Dependancies:
 # - python boto
 # On Debian: aptitude install python-boto
+# With pip: pip install boto
 
 import argparse
 import sys
 import boto.ec2
 import ConfigParser
 import os
-from os.path import expanduser
 import time
 
 
 def custom_print(mtype, message=''):
-    """@todo: Docstring for print_text.
+    """
+    Custom print for better visibility
 
     :mtype: set if message is 'ok', 'updated', '+', 'fail' or 'sub'
     :type mtype: str
@@ -31,6 +32,9 @@ def custom_print(mtype, message=''):
         print(''.join(['  => ', message])),
     elif mtype == 'subsub':
         print(''.join(['    - ', message])),
+    elif mtype == 'Rsubsub':
+        sys.stdout.write("\r    -  %s" % message)
+        sys.stdout.flush()
     elif mtype == 'fail':
         print(''.join(['[FAIL] ', message]))
 
@@ -40,7 +44,7 @@ class Instance:
     Contruct instances and set/get attached disks
     """
 
-    def __init__(self, iid, rid, name):
+    def __init__(self, iid, rid, name, state):
         """
         Set instance id
         :param iid: Instance ID
@@ -53,6 +57,7 @@ class Instance:
         self.instance_id = iid
         self.reservation = rid
         self.name = name
+        self.initial_state = state
         self.disks = {}
 
     def add_disk(self, vol, device):
@@ -80,13 +85,14 @@ class ManageSnapshot:
     Manage AWS Snapshot
     """
 
-    def __init__(self, region, key_id, access_key, instance_list, tags, action):
+    def __init__(self, region, key_id, access_key, instance_list, tags, action, timeout):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
         self._instance_list = instance_list
         self._tags = tags
         self._action = action
+        self._timeout = timeout
         self._instances = []
         self._conn = self._validate_aws_connection()
         self._filter_instances()
@@ -122,10 +128,12 @@ class ManageSnapshot:
         for iid in self._instance_list:
             # Get reservation id
             rid = self._conn.get_all_instances(instance_ids=iid)[0].id
-            # Set instance name
+            # Get instance name
             name = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].tags['Name']
+            # Get instance status
+            state = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].state
             # Create instance
-            instance_id = Instance(iid, rid, name)
+            instance_id = Instance(iid, rid, name, state)
             self._instances.append(instance_id)
             # Set disks
             filter = {'attachment.instance-id': iid}
@@ -155,7 +163,7 @@ class ManageSnapshot:
             for instance in instances:
                 self._instance_list.append(instance.id)
 
-    def get_Instances(self):
+    def get_instances(self):
         """
         Get all instances
         """
@@ -168,21 +176,64 @@ class ManageSnapshot:
                 for vol, device in disks.iteritems():
                     custom_print('subsub', ''.join([vol, ' - ', device, "\n"]))
 
-    def make_Snapshot(self, no_hot_backup):
+    def change_instance_state(self, message, iid, expected_state, no_hot_snap):
+        """
+        Start or stop instance
+        Will wait until the expected state or until timeout will be reached
+
+        :message: the message to inform what will happen
+        :type message: str
+        :instance_id: instance ID
+        :type instance_id: object
+        :expected_state: instance expected state state
+        """
+        retry = 5
+        if no_hot_snap is True:
+            custom_print('sub', ''.join([message, "\n"]))
+
+            if expected_state == 'stopped':
+                self._conn.stop_instances(instance_ids=[iid.instance_id])
+            elif expected_state == 'running':
+                self._conn.start_instances(instance_ids=[iid.instance_id])
+
+            counter = 0
+            while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
+                custom_print('Rsubsub', ''.join(['Waiting for ',
+                                                expected_state,
+                                                ' state...',
+                                                str(counter),
+                                                '/',
+                                                str(self._timeout)]))
+                counter += retry
+                if counter <= self._timeout:
+                    time.sleep(retry)
+                else:
+                    custom_print('fail', 'Timeout exceded')
+                    return 1
+            # Cosmetic
+            if iid.initial_state == 'running':
+                print("\n"),
+            custom_print('sub', ''.join(["Now ", expected_state, " !\n"]))
+            return 0
+        return 0
+
+    def make_snapshot(self, no_hot_snap):
         """
         Create snapshot on selected Instances ids
-        """
-        for iid in self._instances:
-            custom_print('+', ''.join([iid.instance_id, ' (', iid.name, ')']))
 
-            # Pausing VM
-            if no_hot_backup is True:
-                custom_print('sub', "Shutting down instance\n")
-                self._conn.stop_instances(instance_ids=[iid.instance_id])
-                while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'stopped':
-                    custom_print('subsub', ''.join(['Please wait while stopping...', "\n"]))
-                    time.sleep(5)
-                custom_print('sub', "Now stopped !\n")
+        :no_hot_snap: choose hot or cold snapshot
+        :type no_hot_snap: bool
+        """
+
+        for iid in self._instances:
+            custom_print('+',
+                         ''.join([iid.instance_id, ' (', iid.name, ')']))
+
+            # Pausing VM and skip if failed
+            if self.change_instance_state('Shutting down instance',
+                                          iid,
+                                          'stopped', no_hot_snap) != 0:
+                continue
 
             # Creating Snapshot
             custom_print('sub', "Creating Snapshot\n")
@@ -205,14 +256,9 @@ class ManageSnapshot:
                                                  str(snap_id.id),
                                                  "\n"])),
 
-            # Starting VM
-            if no_hot_backup is True:
-                custom_print('sub', "Starting instance\n")
-                self._conn.start_instances(instance_ids=[iid.instance_id])
-                while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != 'running':
-                    custom_print('subsub', ''.join(['Please wait while starting...', "\n"]))
-                    time.sleep(5)
-                custom_print('sub', "Instance started !\n")
+            # Starting VM if was running
+            if iid.initial_state == 'running':
+                self.change_instance_state('Starting instance', iid, 'running', no_hot_snap)
 
 
 def args():
@@ -252,7 +298,7 @@ def args():
                         '--credentials',
                         action='store',
                         type=str,
-                        default=''.join([expanduser("~"), '/.aws_cred']),
+                        default=''.join([os.path.expanduser("~"), '/.aws_cred']),
                         metavar='CREDENTIALS',
                         help='Credentials file path')
     parser.add_argument('-p',
@@ -282,11 +328,18 @@ def args():
                         required=True,
                         action='store',
                         help='Set action to make')
+    parser.add_argument('-m',
+                        '--timeout',
+                        action='store',
+                        type=int,
+                        default=600,
+                        metavar='COLDSNAP_TIMEOUT',
+                        help='Instance timeout (in seconds) for stop and start during a cold snapshot')
     parser.add_argument('-H',
-                        '--no_hot_backup',
+                        '--no_hot_snap',
                         action='store_true',
                         default=False,
-                        help=' '.join(['Make cold backup for a better',
+                        help=' '.join(['Make cold snapshot for a better',
                                        'consistency (Recommended)']))
     parser.add_argument('-v',
                         '--version',
@@ -324,12 +377,12 @@ def args():
         # Create action
         action = a.action
         selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
-                                           a.instance, a.tags, a.action)
+                                           a.instance, a.tags, a.action, a.timeout)
         # Launch chosen action
         if action == 'list':
-            selected_intances.get_Instances()
+            selected_intances.get_instances()
         elif action == 'snapshot':
-            selected_intances.make_Snapshot(a.no_hot_backup)
+            selected_intances.make_snapshot(a.no_hot_snap)
         sys.exit(0)
 
 def main():

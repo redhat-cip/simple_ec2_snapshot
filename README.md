@@ -41,23 +41,31 @@ Then we launch hot snapshot by choosing snapshot action:
 
 If we want to create cold snapshot on a specified instance ID:
 ```
-./simplec2snap.py -o snapshot -i i-ad0fcc4b -H
 [+] Validating AWS connection
 [+] Getting instances information
 [+] i-ad0fcc4b (instance-name-1)
   => Shutting down instance
-    - Please wait while stopping...
-    ...
-    - Please wait while stopping...
+    -  Waiting for stopped state...35/600
   => Now stopped !
   => Creating Snapshot
-    - Creating snapshot of /dev/sda ( vol-faefbae6 ) : snap-a106a850
-    - Creating snapshot of /dev/sdf ( vol-2e742a32 ) : snap-a206a853
+    - Creating snapshot of /dev/sda ( vol-faefbae6 ) : snap-19a527e8 
+    - Creating snapshot of /dev/sdf ( vol-2e742a32 ) : snap-1aa527eb 
   => Starting instance
-    - Please wait while starting...
-    ...
-    - Please wait while starting...
-  => Instance started !
+    -  Waiting for running state...20/600
+  => Now running !
+```
+
+You can use a credential file like this:
+```
+[default]
+aws_region = <region>
+aws_access_key_id = <key_id>
+aws_secret_access_key = <access_key>
+
+#[profile profile1]
+#aws_region = <region>
+#aws_access_key_id = <key_id>
+#aws_secret_access_key = <access_key>
 ```
 
 Here is the help with the complete list of options:
