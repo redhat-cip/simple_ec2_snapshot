@@ -14,29 +14,54 @@ import boto.ec2
 import ConfigParser
 import os
 import time
+import logging
+
+LVL = {'INFO': logging.INFO,
+       'DEBUG': logging.DEBUG,
+       'ERROR': logging.ERROR,
+       'CRITICAL': logging.CRITICAL}
 
 
-def custom_print(mtype, message=''):
+def setup_log(name=__name__, level='INFO', log=None,
+              console=True, form='%(asctime)s [%(levelname)s] - %(message)s'):
     """
-    Custom print for better visibility
+    Setup logger object for displaying information into console/file
 
-    :mtype: set if message is 'ok', 'updated', '+', 'fail' or 'sub'
-    :type mtype: str
-    :message: the message to be shown to the user
-    :type message: str
+    :param name: Name of the logger object to create
+    :type name: str
+
+    :param level: Level INFO/DEBUG/ERROR etc
+    :type level: str
+
+    :param log: File to which log information
+    :type log: str
+
+    :param console: If log information sent to console as well
+    :type console: Boolean
+
+    :param form: The format in which the log will be displayed
+    :type form: str
+
+    :returns: The object logger
+    :rtype: logger object
     """
-
-    if mtype == '+':
-        print(''.join(['[+] ', message]))
-    elif mtype == 'sub':
-        print(''.join(['  => ', message])),
-    elif mtype == 'subsub':
-        print(''.join(['    - ', message])),
-    elif mtype == 'Rsubsub':
-        sys.stdout.write("\r    -  %s" % message)
-        sys.stdout.flush()
-    elif mtype == 'fail':
-        print(''.join(['[FAIL] ', message]))
+    level = level.upper()
+    if level not in LVL:
+        logging.warning("Option of log level %s incorrect, using INFO." % level)
+        level = 'INFO'
+    level = LVL[level]
+    formatter = logging.Formatter(form)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    if log is not None:
+        filehdl = logging.FileHandler(log)
+        filehdl.setFormatter(formatter)
+        logger.addHandler(filehdl)
+    if console is True:
+        consolehdl = logging.StreamHandler()
+        consolehdl.setFormatter(formatter)
+        logger.addHandler(consolehdl)
+    return logger
 
 
 class Instance:
@@ -64,9 +89,11 @@ class Instance:
         """
         Add a disk to an instance
 
-        :vol: set the volume id
+        :param vol: set the volume id
         :type vol: str
-        :device: set the device path
+
+        :param device: set the device path
+        :type device: str
         """
         self.disks[vol] = device
 
@@ -75,7 +102,7 @@ class Instance:
         Get the list of disks with mount points
 
         :returns: Dictionary of volumes with mount points
-        :type return: dict
+        :rtype return: dict
         """
         return(self.disks)
 
@@ -85,7 +112,8 @@ class ManageSnapshot:
     Manage AWS Snapshot
     """
 
-    def __init__(self, region, key_id, access_key, instance_list, tags, action, timeout):
+    def __init__(self, region, key_id, access_key, instance_list, tags,
+                 action, timeout, logger=__name__):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
@@ -94,6 +122,7 @@ class ManageSnapshot:
         self._action = action
         self._timeout = timeout
         self._instances = []
+        self.logger = logging.getLogger(logger)
         self._conn = self._validate_aws_connection()
         self._filter_instances()
         self._set_instance_info()
@@ -103,13 +132,14 @@ class ManageSnapshot:
         Validate if AWS connection is OK or not
         """
         c = False
-        custom_print('+', 'Validating AWS connection')
+        self.logger.info(' '.join(['Connecting to AWS with your Access key: ',
+                                   self._access_key]))
         try:
             c = boto.ec2.connect_to_region(self._region,
                                            aws_access_key_id=self._key_id,
                                            aws_secret_access_key=self._access_key)
         except IndexError, e:
-            print("Can't connect with the credentials: %s" % e)
+            self.logger.critical("Can't connect with the credentials: %s" % e)
             sys.exit(1)
         return(c)
 
@@ -118,9 +148,8 @@ class ManageSnapshot:
         Set instances info from an ID
         This will construct an object containing disks attributes
 
-        :instance_list: list of instance ID
+        :param instance_list: list of instance ID
         :type instance_list: list
-        :returns: nothing
         """
         # Remove doubles
         self._instance_list = list(set(self._instance_list))
@@ -149,7 +178,7 @@ class ManageSnapshot:
         """
         Filter instances by tag
         """
-        custom_print('+', 'Getting instances information')
+        self.logger.info('Getting instances information')
         if len(self._tags) > 0:
             # Create a dictionary with tags to create filters
             filter_tags = {}
@@ -171,25 +200,35 @@ class ManageSnapshot:
             print('No instances found with those parameters !')
         else:
             for iid in self._instances:
-                custom_print('sub', ''.join([iid.instance_id, ' (', iid.name, ')', "\n"]))
+                self.logger.info(''.join(['Working on instance',
+                                          iid.instance_id,
+                                          ' (', iid.name, ')']))
                 disks = iid.get_disks()
                 for vol, device in disks.iteritems():
-                    custom_print('subsub', ''.join([vol, ' - ', device, "\n"]))
+                    self.logger.info(''.join(['  ', vol, ' - ', device]))
 
     def change_instance_state(self, message, iid, expected_state, no_hot_snap):
         """
         Start or stop instance
         Will wait until the expected state or until timeout will be reached
 
-        :message: the message to inform what will happen
+        :param message: the message to inform what will happen
         :type message: str
-        :instance_id: instance ID
+
+        :param instance_id: instance ID
         :type instance_id: object
-        :expected_state: instance expected state state
+
+        :param expected_state: instance expected state state
+        :type expected_state: str
+
+        :param no_hot_swap: request cold or host snapshot
+        :type no_hot_swap: bool
+
+        :returns: int
         """
         retry = 5
         if no_hot_snap is True:
-            custom_print('sub', ''.join([message, "\n"]))
+            self.logger.info(message)
 
             if expected_state == 'stopped':
                 self._conn.stop_instances(instance_ids=[iid.instance_id])
@@ -198,22 +237,17 @@ class ManageSnapshot:
 
             counter = 0
             while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
-                custom_print('Rsubsub', ''.join(['Waiting for ',
-                                                expected_state,
-                                                ' state...',
-                                                str(counter),
-                                                '/',
-                                                str(self._timeout)]))
+                self.logger.debug(''.join(['Waiting for ', expected_state,
+                                           ' state...', str(counter),
+                                           '/', str(self._timeout)]))
                 counter += retry
                 if counter <= self._timeout:
                     time.sleep(retry)
                 else:
-                    custom_print('fail', 'Timeout exceded')
+                    self.logger.error('Timeout exceded')
                     return 1
-            # Cosmetic
-            if iid.initial_state == 'running':
-                print("\n"),
-            custom_print('sub', ''.join(["Now ", expected_state, " !\n"]))
+            self.logger.info(''.join(['Instance ', iid.instance_id, ' now ',
+                                      expected_state, ' !']))
             return 0
         return 0
 
@@ -221,13 +255,14 @@ class ManageSnapshot:
         """
         Create snapshot on selected Instances ids
 
-        :no_hot_snap: choose hot or cold snapshot
-        :type no_hot_snap: bool
+        :param no_hot_swap: request cold or host snapshot
+        :type no_hot_swap: bool
         """
 
         for iid in self._instances:
-            custom_print('+',
-                         ''.join([iid.instance_id, ' (', iid.name, ')']))
+            self.logger.info(''.join(['Working on instance ',
+                                      iid.instance_id,
+                                      ' (', iid.name, ')']))
 
             # Pausing VM and skip if failed
             if self.change_instance_state('Shutting down instance',
@@ -236,7 +271,6 @@ class ManageSnapshot:
                 continue
 
             # Creating Snapshot
-            custom_print('sub', "Creating Snapshot\n")
             disks = iid.get_disks()
             for vol, device in disks.iteritems():
                 snap_id = self._conn.create_snapshot(vol,
@@ -248,22 +282,19 @@ class ManageSnapshot:
                                                               ' (',
                                                               vol,
                                                               ')']))
-                custom_print('subsub', ' '.join(['Creating snapshot of',
-                                                 device,
-                                                 '(',
-                                                 vol,
-                                                 ') :',
-                                                 str(snap_id.id),
-                                                 "\n"])),
+                self.logger.info(' '.join(['  ', iid.instance_id,
+                                           ': snapshoting', device,
+                                           '(', vol, ') :', str(snap_id.id)]))
 
             # Starting VM if was running
             if iid.initial_state == 'running':
-                self.change_instance_state('Starting instance', iid, 'running', no_hot_snap)
+                self.change_instance_state('Starting instance', iid,
+                                           'running', no_hot_snap)
 
 
-def args():
+def main():
     """
-    Manage args
+    Main - manage args
     """
     global region, key_id, access_key, instance, action, tag
 
@@ -273,78 +304,51 @@ def args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Command args
-    parser.add_argument('-r',
-                        '--region',
-                        action='store',
-                        type=str,
-                        default=None,
-                        metavar='REGION',
+    parser.add_argument('-r', '--region', action='store',
+                        type=str, default=None, metavar='REGION',
                         help='Set AWS region (ex: eu-west-1)')
-    parser.add_argument('-k',
-                        '--key_id',
-                        action='store',
-                        type=str,
-                        default=None,
-                        metavar='KEY_ID',
+    parser.add_argument('-k', '--key_id', action='store',
+                        type=str, default=None, metavar='KEY_ID',
                         help='Set AWS Key ID')
-    parser.add_argument('-a',
-                        '--access_key',
-                        action='store',
-                        type=str,
-                        default=None,
-                        metavar='ACCESS_KEY',
+    parser.add_argument('-a', '--access_key', action='store',
+                        type=str, default=None, metavar='ACCESS_KEY',
                         help='Set AWS Access Key')
-    parser.add_argument('-c',
-                        '--credentials',
-                        action='store',
-                        type=str,
-                        default=''.join([os.path.expanduser("~"), '/.aws_cred']),
+    parser.add_argument('-c', '--credentials', action='store', type=str,
+                        default=''.join([os.path.expanduser("~"),
+                                         '/.aws_cred']),
                         metavar='CREDENTIALS',
                         help='Credentials file path')
-    parser.add_argument('-p',
-                        '--profile',
-                        action='store',
-                        type=str,
-                        default='default',
-                        metavar='CRED_PROFILE',
-                        help='Credentials profile file defined in credentials file')
-    parser.add_argument('-i',
-                        '--instance',
-                        action='append',
-                        default=[],
-                        metavar='INSTANCE_ID',
+    parser.add_argument('-p', '--profile', action='store',
+                        type=str, default='default', metavar='CRED_PROFILE',
+                        help='Credentials profile file defined in \
+                              credentials file')
+    parser.add_argument('-i', '--instance', action='append',
+                        default=[], metavar='INSTANCE_ID',
                         help=' '.join(['Instance ID (ex: i-00000000 or all)']))
-    parser.add_argument('-t',
-                        '--tags',
-                        action='append',
-                        type=str,
-                        default=[],
-                        metavar='ARG',
-                        nargs=2,
-                        help='Select tags with their values (ex: tagname value)')
-    parser.add_argument('-o',
-                        '--action',
-                        choices=['list', 'snapshot'],
-                        required=True,
-                        action='store',
+    parser.add_argument('-t', '--tags', action='append', type=str,
+                        default=[], metavar='ARG', nargs=2,
+                        help='Select tags with values (ex: tagname value)')
+    parser.add_argument('-o', '--action', choices=['list', 'snapshot'],
+                        required=True, action='store',
                         help='Set action to make')
-    parser.add_argument('-m',
-                        '--timeout',
-                        action='store',
-                        type=int,
-                        default=600,
-                        metavar='COLDSNAP_TIMEOUT',
-                        help='Instance timeout (in seconds) for stop and start during a cold snapshot')
-    parser.add_argument('-H',
-                        '--no_hot_snap',
-                        action='store_true',
-                        default=False,
+    parser.add_argument('-m', '--timeout', action='store',
+                        type=int, default=600, metavar='COLDSNAP_TIMEOUT',
+                        help='Instance timeout (in seconds) for stop and start \
+                              during a cold snapshot')
+    parser.add_argument('-H', '--no_hot_snap',
+                        action='store_true', default=False,
                         help=' '.join(['Make cold snapshot for a better',
                                        'consistency (Recommended)']))
-    parser.add_argument('-v',
-                        '--version',
-                        action='version',
-                        version='v0.1 Licence GPLv2',
+    parser.add_argument('-f', '--file_output', metavar='FILE',
+                        default=None, action='store', type=str,
+                        help='Set an output file')
+    parser.add_argument('-s', '--stdout', action='store_true', default=True,
+                        help='Log output to console (stdout)')
+    parser.add_argument('-v', '--verbosity', metavar='LEVEL', default='INFO',
+                        type=str, action='store',
+                        help='Verbosity level: DEBUG/INFO/ERROR/CRITICAL')
+    parser.add_argument('-V', '--version',
+                        action='version', version='v0.1 Licence GPLv2',
                         help='Print version number')
 
     # Print help if no args supplied
@@ -352,6 +356,9 @@ def args():
         parser.print_help()
         sys.exit(1)
     a = parser.parse_args()
+
+    # Setup loger
+    setup_log(console=a.stdout, log=a.file_output, level=a.verbosity)
 
     # Read credential file and override by command args
     if os.path.isfile(a.credentials):
@@ -370,26 +377,21 @@ def args():
 
     # Exit if no instance or tag has been set
     if a.instance is None and a.tags is None:
-        custom_print('fail', ' '.join(['Please set at least an instance ID',
-                                      'or a tag with its value']))
+        print(' '.join(['[FAIL] Please set at least an instance ID',
+                        'or a tag with its value']))
         sys.exit(1)
     else:
         # Create action
         action = a.action
         selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
-                                           a.instance, a.tags, a.action, a.timeout)
+                                           a.instance, a.tags, a.action,
+                                           a.timeout)
         # Launch chosen action
         if action == 'list':
             selected_intances.get_instances()
         elif action == 'snapshot':
             selected_intances.make_snapshot(a.no_hot_snap)
         sys.exit(0)
-
-def main():
-    """
-    Main function
-    """
-    args()
 
 if __name__ == "__main__":
     main()
