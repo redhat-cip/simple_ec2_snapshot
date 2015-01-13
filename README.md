@@ -6,10 +6,10 @@ Simple solution to backup ec2 instances using snapshots
 With Simple EC2 Snapshot supports:
 
 * Hot snapshots (by default) and Cold snapshots
-* Multiple instances snapshot on the same command line
-* The detection of doubles
-* Filters by tags (accepting wildcards) or by instance IDs
-* Credential file with profiles and cli credentials
+* Multiple instances snapshot in one line
+* Detection of doubles
+* Filters by tags (allowing wildcards) or by instance IDs
+* Credentials file multiple with profiles
 * Limit the number of snapshots
 * Restrict snapshots to data disks only
 
