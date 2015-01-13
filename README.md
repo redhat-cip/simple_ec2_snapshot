@@ -11,6 +11,7 @@ With Simple EC2 Snapshot supports:
 * Filters by tags (accepting wildcards) or by instance IDs
 * Credential file with profiles and cli credentials
 * Limit the number of snapshots
+* Restrict snapshots to data disks only
 
 ## Filters
 
@@ -101,6 +102,23 @@ In auto-scaling groups, you normally have x time the same running intance. Snaps
 2015-01-13 15:26:40,565 [INFO]   - i-ad0fcc4b : snapshoting /dev/sda ( vol-faefbae6 )
 2015-01-13 15:26:40,565 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 )
 2015-01-13 15:26:40,565 [INFO] The requested limit of snapshots has been reached: 1
+```
+
+## Remove root device from snapshots
+
+Still for auto-scaling groups, your root device may not be required to snapshot. Generally because it may be builded from a configuration manager and you just don't care of it. So the goal is to remove it from the snapshot list, you can so use '-o' option:
+
+```
+> ./simplec2snap.py -t Name 'instance-name-*' -o
+2015-01-13 17:34:56,631 [INFO] == Launching dry run mode ==
+2015-01-13 17:34:56,631 [INFO] Connecting to AWS with your Access key: xxxxx
+2015-01-13 17:34:56,631 [INFO] Getting instances information
+2015-01-13 17:34:58,674 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
+2015-01-13 17:34:58,674 [INFO] Not snapshoting root device
+2015-01-13 17:34:58,674 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 )
+2015-01-13 17:34:58,674 [INFO] Working on instance i-56489db2 (instance-name-2)
+2015-01-13 17:34:58,674 [INFO] Not snapshoting root device
+2015-01-13 17:34:58,674 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 )
 ```
 
 ## Credentials file

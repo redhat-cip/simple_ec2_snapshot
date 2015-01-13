@@ -69,7 +69,7 @@ class Instance:
     Contruct instances and set/get attached disks
     """
 
-    def __init__(self, iid, rid, name, state):
+    def __init__(self, iid, rid, name, state, root_dev):
         """
         Set instance id
         :param iid: Instance ID
@@ -83,6 +83,7 @@ class Instance:
         self.reservation = rid
         self.name = name
         self.initial_state = state
+        self.root_dev = root_dev
         self.disks = {}
 
     def add_disk(self, vol, device):
@@ -113,7 +114,8 @@ class ManageSnapshot:
     """
 
     def __init__(self, region, key_id, access_key, instance_list, tags,
-                 dry_run, timeout, no_hot_snap, limit, logger=__name__):
+                 dry_run, timeout, no_hot_snap, limit, no_root_device,
+                 logger=__name__):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
@@ -123,6 +125,7 @@ class ManageSnapshot:
         self._timeout = timeout
         self._no_hot_snap = no_hot_snap
         self._limit = limit
+        self._no_root_device = no_root_device
         self._instances = []
         self.logger = logging.getLogger(logger)
         self._conn = self._validate_aws_connection()
@@ -169,8 +172,10 @@ class ManageSnapshot:
             name = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].tags['Name']
             # Get instance status
             state = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].state
+            # Get root device
+            root_dev = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].root_device_name
             # Create instance
-            instance_id = Instance(iid, rid, name, state)
+            instance_id = Instance(iid, rid, name, state, root_dev)
             self._instances.append(instance_id)
             # Set disks
             filter = {'attachment.instance-id': iid}
@@ -232,8 +237,8 @@ class ManageSnapshot:
                 counter = 0
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
                     self.logger.debug(''.join(['Waiting for ', expected_state,
-                                            ' state...', str(counter),
-                                            '/', str(self._timeout)]))
+                                               ' state...', str(counter),
+                                               '/', str(self._timeout)]))
                     counter += retry
                     if counter <= self._timeout:
                         time.sleep(retry)
@@ -241,7 +246,7 @@ class ManageSnapshot:
                         self.logger.error('Timeout exceded')
                         return 1
                 self.logger.info(''.join(['Instance ', iid.instance_id, ' now ',
-                                        expected_state, ' !']))
+                                          expected_state, ' !']))
                 return 0
             else:
                 self.logger.info(' '.join(['Instance will be', expected_state]))
@@ -264,20 +269,32 @@ class ManageSnapshot:
                 # Pausing VM and skip if failed
                 if iid.initial_state == 'running':
                     if self.change_instance_state('Shutting down instance',
-                                                iid,
-                                                'stopped',
-                                                self._no_hot_snap) != 0:
+                                                  iid,
+                                                  'stopped',
+                                                  self._no_hot_snap) != 0:
                         continue
 
                 # Creating Snapshot
                 disks = iid.get_disks()
                 for vol, device in disks.iteritems():
-                    cur_snap = ' '.join(['  -', iid.instance_id, ': snapshoting',
-                                         device, '(', vol, ')'])
+                    # Removing root device if required
+                    if self._no_root_device is True:
+                        if device == iid.root_dev:
+                            self.logger.info('Not snapshoting root device')
+                            continue
+                    # Make snapshot
+                    cur_snap = ' '.join(['  -', iid.instance_id,
+                                         ': snapshoting', device,
+                                         '(', vol, ')'])
                     if self._dry_run is False:
-                        snap_id = self._conn.create_snapshot(vol, ''.join([iid.instance_id,
-                                                             ' (', iid.name, ') - ',
-                                                             device, ' (', vol, ')']))
+                        snap_id = self._conn.create_snapshot(vol,
+                                                             ''.join([iid.instance_id,
+                                                                      ' (',
+                                                                      iid.name,
+                                                                      ') - ',
+                                                                      device,
+                                                                      ' (', vol,
+                                                                      ')']))
                         self.logger.info(' '.join([cur_snap,
                                                   str(snap_id.id)]))
                     else:
@@ -286,16 +303,18 @@ class ManageSnapshot:
                 # Starting VM if was running
                 if iid.initial_state == 'running':
                     self.change_instance_state('Starting instance', iid,
-                                                'running', self._no_hot_snap)
+                                               'running', self._no_hot_snap)
 
                 # Limit the number of backups if requested
                 if self._limit != -1:
                     counter += 1
                     if counter >= self._limit:
                         self.logger.info(' '.join(['The requested limit of',
-                                                   'snapshots has been reached:',
+                                                   'snapshots has been',
+                                                   'reached:',
                                                    str(self._limit)]))
                         break
+
 
 def main():
     """
@@ -337,19 +356,23 @@ def main():
                         help='Select tags with values (ex: tagname value)')
 
     parser.add_argument('-u', '--dry_run', action='store_false', default=True,
-                        help='Define if it should make snapshot or just dry run')
+                        help='Define if it should make snapshot or just \
+                        dry run')
     parser.add_argument('-l', '--limit',
                         action='store', default=-1, type=int,
                         help=' '.join(['Limit the number of snapshot (can be',
                                        'usefull with auto-scaling groups)']))
     parser.add_argument('-H', '--no_hot_snap',
                         action='store_true', default=False,
-                        help=' '.join(['Make cold snapshot for a better',
-                                       'consistency (Recommended)']))
+                        help='Make cold snapshot for a better consistency \
+                        (Recommended)')
     parser.add_argument('-m', '--timeout', action='store',
                         type=int, default=600, metavar='COLDSNAP_TIMEOUT',
                         help='Instance timeout (in seconds) for stop and start \
                               during a cold snapshot')
+    parser.add_argument('-o', '--no_root_device',
+                        action='store_true', default=False,
+                        help='Do not snapshot root device')
 
     parser.add_argument('-f', '--file_output', metavar='FILE',
                         default=None, action='store', type=str,
@@ -397,7 +420,8 @@ def main():
         # Create action
         selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
                                            a.instance, a.tags, a.dry_run,
-                                           a.timeout, a.no_hot_snap, a.limit)
+                                           a.timeout, a.no_hot_snap, a.limit,
+                                           a.no_root_device)
         # Launch snapshot
         selected_intances.make_snapshot()
 
