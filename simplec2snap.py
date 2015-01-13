@@ -23,7 +23,7 @@ LVL = {'INFO': logging.INFO,
 
 
 def setup_log(name=__name__, level='INFO', log=None,
-              console=True, form='%(asctime)s [%(levelname)s] - %(message)s'):
+              console=True, form='%(asctime)s [%(levelname)s] %(message)s'):
     """
     Setup logger object for displaying information into console/file
 
@@ -113,14 +113,16 @@ class ManageSnapshot:
     """
 
     def __init__(self, region, key_id, access_key, instance_list, tags,
-                 action, timeout, logger=__name__):
+                 dry_run, timeout, no_hot_snap, limit, logger=__name__):
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
         self._instance_list = instance_list
         self._tags = tags
-        self._action = action
+        self._dry_run = dry_run
         self._timeout = timeout
+        self._no_hot_snap = no_hot_snap
+        self._limit = limit
         self._instances = []
         self.logger = logging.getLogger(logger)
         self._conn = self._validate_aws_connection()
@@ -131,8 +133,14 @@ class ManageSnapshot:
         """
         Validate if AWS connection is OK or not
         """
+        # Print running mode
+        mode = 'run'
+        if self._dry_run is True:
+            mode = ' '.join(['dry', mode])
+        self.logger.info(' '.join(['== Launching', mode, 'mode ==']))
+
         c = False
-        self.logger.info(' '.join(['Connecting to AWS with your Access key: ',
+        self.logger.info(' '.join(['Connecting to AWS with your Access key:',
                                    self._access_key]))
         try:
             c = boto.ec2.connect_to_region(self._region,
@@ -192,21 +200,6 @@ class ManageSnapshot:
             for instance in instances:
                 self._instance_list.append(instance.id)
 
-    def get_instances(self):
-        """
-        Get all instances
-        """
-        if (len(self._instances) == 0):
-            print('No instances found with those parameters !')
-        else:
-            for iid in self._instances:
-                self.logger.info(''.join(['Working on instance',
-                                          iid.instance_id,
-                                          ' (', iid.name, ')']))
-                disks = iid.get_disks()
-                for vol, device in disks.iteritems():
-                    self.logger.info(''.join(['  ', vol, ' - ', device]))
-
     def change_instance_state(self, message, iid, expected_state, no_hot_snap):
         """
         Start or stop instance
@@ -228,69 +221,81 @@ class ManageSnapshot:
         """
         retry = 5
         if no_hot_snap is True:
-            self.logger.info(message)
+            if self._dry_run is False:
+                if expected_state == 'stopped':
+                    self.logger.info('Instance is going to be shutdown')
+                    self._conn.stop_instances(instance_ids=[iid.instance_id])
+                elif expected_state == 'running':
+                    self.logger.info('Instance is going to be started')
+                    self._conn.start_instances(instance_ids=[iid.instance_id])
 
-            if expected_state == 'stopped':
-                self._conn.stop_instances(instance_ids=[iid.instance_id])
-            elif expected_state == 'running':
-                self._conn.start_instances(instance_ids=[iid.instance_id])
-
-            counter = 0
-            while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
-                self.logger.debug(''.join(['Waiting for ', expected_state,
-                                           ' state...', str(counter),
-                                           '/', str(self._timeout)]))
-                counter += retry
-                if counter <= self._timeout:
-                    time.sleep(retry)
-                else:
-                    self.logger.error('Timeout exceded')
-                    return 1
-            self.logger.info(''.join(['Instance ', iid.instance_id, ' now ',
-                                      expected_state, ' !']))
-            return 0
+                counter = 0
+                while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
+                    self.logger.debug(''.join(['Waiting for ', expected_state,
+                                            ' state...', str(counter),
+                                            '/', str(self._timeout)]))
+                    counter += retry
+                    if counter <= self._timeout:
+                        time.sleep(retry)
+                    else:
+                        self.logger.error('Timeout exceded')
+                        return 1
+                self.logger.info(''.join(['Instance ', iid.instance_id, ' now ',
+                                        expected_state, ' !']))
+                return 0
+            else:
+                self.logger.info(' '.join(['Instance will be', expected_state]))
         return 0
 
-    def make_snapshot(self, no_hot_snap):
+    def make_snapshot(self):
         """
         Create snapshot on selected Instances ids
-
-        :param no_hot_swap: request cold or host snapshot
-        :type no_hot_swap: bool
         """
 
-        for iid in self._instances:
-            self.logger.info(''.join(['Working on instance ',
-                                      iid.instance_id,
-                                      ' (', iid.name, ')']))
+        if (len(self._instances) == 0):
+            print('No instances found with those parameters !')
+        else:
+            counter = 0
+            for iid in self._instances:
+                self.logger.info(''.join(['Working on instance ',
+                                          iid.instance_id,
+                                          ' (', iid.name, ')']))
 
-            # Pausing VM and skip if failed
-            if self.change_instance_state('Shutting down instance',
-                                          iid,
-                                          'stopped', no_hot_snap) != 0:
-                continue
+                # Pausing VM and skip if failed
+                if iid.initial_state == 'running':
+                    if self.change_instance_state('Shutting down instance',
+                                                iid,
+                                                'stopped',
+                                                self._no_hot_snap) != 0:
+                        continue
 
-            # Creating Snapshot
-            disks = iid.get_disks()
-            for vol, device in disks.iteritems():
-                snap_id = self._conn.create_snapshot(vol,
-                                                     ''.join([iid.instance_id,
-                                                              ' (',
-                                                              iid.name,
-                                                              ') - ',
-                                                              device,
-                                                              ' (',
-                                                              vol,
-                                                              ')']))
-                self.logger.info(' '.join(['  ', iid.instance_id,
-                                           ': snapshoting', device,
-                                           '(', vol, ') :', str(snap_id.id)]))
+                # Creating Snapshot
+                disks = iid.get_disks()
+                for vol, device in disks.iteritems():
+                    cur_snap = ' '.join(['  -', iid.instance_id, ': snapshoting',
+                                         device, '(', vol, ')'])
+                    if self._dry_run is False:
+                        snap_id = self._conn.create_snapshot(vol, ''.join([iid.instance_id,
+                                                             ' (', iid.name, ') - ',
+                                                             device, ' (', vol, ')']))
+                        self.logger.info(' '.join([cur_snap,
+                                                  str(snap_id.id)]))
+                    else:
+                        self.logger.info(cur_snap)
 
-            # Starting VM if was running
-            if iid.initial_state == 'running':
-                self.change_instance_state('Starting instance', iid,
-                                           'running', no_hot_snap)
+                # Starting VM if was running
+                if iid.initial_state == 'running':
+                    self.change_instance_state('Starting instance', iid,
+                                                'running', self._no_hot_snap)
 
+                # Limit the number of backups if requested
+                if self._limit != -1:
+                    counter += 1
+                    if counter >= self._limit:
+                        self.logger.info(' '.join(['The requested limit of',
+                                                   'snapshots has been reached:',
+                                                   str(self._limit)]))
+                        break
 
 def main():
     """
@@ -313,6 +318,7 @@ def main():
     parser.add_argument('-a', '--access_key', action='store',
                         type=str, default=None, metavar='ACCESS_KEY',
                         help='Set AWS Access Key')
+
     parser.add_argument('-c', '--credentials', action='store', type=str,
                         default=''.join([os.path.expanduser("~"),
                                          '/.aws_cred']),
@@ -322,23 +328,29 @@ def main():
                         type=str, default='default', metavar='CRED_PROFILE',
                         help='Credentials profile file defined in \
                               credentials file')
+
     parser.add_argument('-i', '--instance', action='append',
                         default=[], metavar='INSTANCE_ID',
                         help=' '.join(['Instance ID (ex: i-00000000 or all)']))
     parser.add_argument('-t', '--tags', action='append', type=str,
                         default=[], metavar='ARG', nargs=2,
                         help='Select tags with values (ex: tagname value)')
-    parser.add_argument('-o', '--action', choices=['list', 'snapshot'],
-                        required=True, action='store',
-                        help='Set action to make')
-    parser.add_argument('-m', '--timeout', action='store',
-                        type=int, default=600, metavar='COLDSNAP_TIMEOUT',
-                        help='Instance timeout (in seconds) for stop and start \
-                              during a cold snapshot')
+
+    parser.add_argument('-u', '--dry_run', action='store_false', default=True,
+                        help='Define if it should make snapshot or just dry run')
+    parser.add_argument('-l', '--limit',
+                        action='store', default=-1, type=int,
+                        help=' '.join(['Limit the number of snapshot (can be',
+                                       'usefull with auto-scaling groups)']))
     parser.add_argument('-H', '--no_hot_snap',
                         action='store_true', default=False,
                         help=' '.join(['Make cold snapshot for a better',
                                        'consistency (Recommended)']))
+    parser.add_argument('-m', '--timeout', action='store',
+                        type=int, default=600, metavar='COLDSNAP_TIMEOUT',
+                        help='Instance timeout (in seconds) for stop and start \
+                              during a cold snapshot')
+
     parser.add_argument('-f', '--file_output', metavar='FILE',
                         default=None, action='store', type=str,
                         help='Set an output file')
@@ -347,6 +359,7 @@ def main():
     parser.add_argument('-v', '--verbosity', metavar='LEVEL', default='INFO',
                         type=str, action='store',
                         help='Verbosity level: DEBUG/INFO/ERROR/CRITICAL')
+
     parser.add_argument('-V', '--version',
                         action='version', version='v0.1 Licence GPLv2',
                         help='Print version number')
@@ -382,15 +395,12 @@ def main():
         sys.exit(1)
     else:
         # Create action
-        action = a.action
         selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
-                                           a.instance, a.tags, a.action,
-                                           a.timeout)
-        # Launch chosen action
-        if action == 'list':
-            selected_intances.get_instances()
-        elif action == 'snapshot':
-            selected_intances.make_snapshot(a.no_hot_snap)
+                                           a.instance, a.tags, a.dry_run,
+                                           a.timeout, a.no_hot_snap, a.limit)
+        # Launch snapshot
+        selected_intances.make_snapshot()
+
         sys.exit(0)
 
 if __name__ == "__main__":
