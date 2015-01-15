@@ -74,10 +74,18 @@ class Instance:
         Set instance id
         :param iid: Instance ID
         :type iid: str
+
         :param rid: Reservation ID
         :type rid: str
+
         :param name: Name of the instance
         :type type: str
+
+        :param state: State of instance
+        :type state: str
+
+        :param root_dev: Name of the root device
+        :type root_dev: str
         """
         self.instance_id = iid
         self.reservation = rid
@@ -103,7 +111,7 @@ class Instance:
         Get the list of disks with mount points
 
         :returns: Dictionary of volumes with mount points
-        :rtype return: dict
+        :rtype return: dict of str
         """
         return(self.disks)
 
@@ -116,6 +124,42 @@ class ManageSnapshot:
     def __init__(self, region, key_id, access_key, instance_list, tags,
                  dry_run, timeout, no_hot_snap, limit, no_root_device,
                  logger=__name__):
+        """
+        TO BE COMPLETED
+        :param region:
+        :type region:
+
+        :param key_id:
+        :type key_id:
+
+        :param access_key:
+        :type access_key:
+
+        :param instance_list:
+        :type instance_list:
+
+        :param tags:
+        :type tags:
+
+        :param dry_run:
+        :type dry_run:
+
+        :param timeout:
+        :type timeout:
+
+        :param no_hot_snap:
+        :type no_hot_snap:
+
+        :param limit:
+        :type limit:
+
+        :param no_root_device:
+        :type no_root_device:
+
+        :param logger:
+        :type logger:
+
+        """
         self._region = region
         self._key_id = key_id
         self._access_key = access_key
@@ -158,9 +202,6 @@ class ManageSnapshot:
         """
         Set instances info from an ID
         This will construct an object containing disks attributes
-
-        :param instance_list: list of instance ID
-        :type instance_list: list
         """
         # Remove doubles
         self._instance_list = list(set(self._instance_list))
@@ -210,11 +251,12 @@ class ManageSnapshot:
         Start or stop instance
         Will wait until the expected state or until timeout will be reached
 
+        TO BE REVIEWED
         :param message: the message to inform what will happen
         :type message: str
 
-        :param instance_id: instance ID
-        :type instance_id: object
+        :param iid: instance ID
+        :type iid: object
 
         :param expected_state: instance expected state state
         :type expected_state: str
@@ -320,8 +362,6 @@ def main():
     """
     Main - manage args
     """
-    global region, key_id, access_key, instance, action, tag
-
     # Main informations
     parser = argparse.ArgumentParser(
         description='Simple EC2 Snapshot utility',
@@ -339,8 +379,7 @@ def main():
                         help='Set AWS Access Key')
 
     parser.add_argument('-c', '--credentials', action='store', type=str,
-                        default=''.join([os.path.expanduser("~"),
-                                         '/.aws_cred']),
+                        default=''.join([os.path.expanduser("~"), '/.aws_cred']),
                         metavar='CREDENTIALS',
                         help='Credentials file path')
     parser.add_argument('-p', '--profile', action='store',
@@ -390,38 +429,38 @@ def main():
     # Print help if no args supplied
     if len(sys.argv) == 1:
         parser.print_help()
-        sys.exit(1)
-    a = parser.parse_args()
+        sys.exit(0)
+    arg = parser.parse_args()
 
     # Setup loger
-    setup_log(console=a.stdout, log=a.file_output, level=a.verbosity)
+    setup_log(console=arg.stdout, log=arg.file_output, level=arg.verbosity)
 
     # Read credential file and override by command args
-    if os.path.isfile(a.credentials):
-        if os.access(a.credentials,  os.R_OK):
+    if os.path.isfile(arg.credentials):
+        if os.access(arg.credentials,  os.R_OK):
             config = ConfigParser.ConfigParser()
-            config.read([str(a.credentials)])
-            if a.region is None:
-                a.region = config.get(a.profile, 'aws_region')
-            if a.access_key is None:
-                a.access_key = config.get(a.profile, 'aws_secret_access_key')
-            if a.key_id is None:
-                a.key_id = config.get(a.profile, 'aws_access_key_id')
+            config.read([str(arg.credentials)])
+            if arg.region is None:
+                arg.region = config.get(arg.profile, 'aws_region')
+            if arg.access_key is None:
+                arg.access_key = config.get(arg.profile, 'aws_secret_access_key')
+            if arg.key_id is None:
+                arg.key_id = config.get(arg.profile, 'aws_access_key_id')
         else:
             print('fail', "Can't have permission to read credentials file")
             sys.exit(1)
 
     # Exit if no instance or tag has been set
-    if a.instance is None and a.tags is None:
+    if arg.instance is None and arg.tags is None:
         print(' '.join(['[FAIL] Please set at least an instance ID',
                         'or a tag with its value']))
         sys.exit(1)
     else:
         # Create action
-        selected_intances = ManageSnapshot(a.region, a.key_id, a.access_key,
-                                           a.instance, a.tags, a.dry_run,
-                                           a.timeout, a.no_hot_snap, a.limit,
-                                           a.no_root_device)
+        selected_intances = ManageSnapshot(arg.region, arg.key_id, arg.access_key,
+                                           arg.instance, arg.tags, arg.dry_run,
+                                           arg.timeout, arg.no_hot_snap, arg.limit,
+                                           arg.no_root_device)
         # Launch snapshot
         selected_intances.make_snapshot()
 
