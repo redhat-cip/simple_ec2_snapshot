@@ -264,7 +264,7 @@ class ManageSnapshot:
         :param no_hot_swap: request cold or host snapshot
         :type no_hot_swap: bool
 
-        :returns: int
+        :returns: Boolean
         """
         retry = 5
         if no_hot_snap is True:
@@ -285,12 +285,12 @@ class ManageSnapshot:
                         time.sleep(retry)
                     else:
                         self.logger.error('Timeout exceded')
-                        return 1
+                        return False
                 self.logger.info("Instance %s now %s !" %
                                  (iid.instance_id, expected_state))
-                return 0
+                return True
             self.logger.info("Instance will be %s" % expected_state)
-        return 0
+        return True
 
     def _create_inst_snap(self, iid):
         """
@@ -337,7 +337,7 @@ class ManageSnapshot:
 
             # Pausing VM and skip if failed
             if iid.initial_state == 'running' and \
-            self.check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap) != 0:
+            self.check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap):
                 continue
 
             # Creating Snapshot
