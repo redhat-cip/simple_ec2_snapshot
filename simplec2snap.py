@@ -247,49 +247,31 @@ class ManageSnapshot:
             for instance in instances:
                 self._instance_list.append(instance.id)
 
-    def check_inst_state(self, message, iid, expected_state, no_hot_snap):
+    def _check_inst_state(self, iid, expected_state):
         """
         Will wait until the expected state or until timeout will be reached
 
         TO BE REVIEWED
-        :param message: the message to inform what will happen
-        :type message: str
-
         :param iid: instance ID
         :type iid: object
 
         :param expected_state: instance expected state state
         :type expected_state: str
 
-        :param no_hot_swap: request cold or host snapshot
-        :type no_hot_swap: bool
-
         :returns: Boolean
         """
         retry = 5
-        if no_hot_snap is True:
-            if self._dry_run is False:
-                if expected_state == 'stopped':
-                    self.logger.info('Instance is going to be shutdown')
-                    self._conn.stop_instances(instance_ids=[iid.instance_id])
-                elif expected_state == 'running':
-                    self.logger.info('Instance is going to be started')
-                    self._conn.start_instances(instance_ids=[iid.instance_id])
-
-                counter = 0
-                while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
-                    self.logger.debug("Waiting for %s state... %s / %s" %
-                                      (expected_state, counter, self._timeout))
-                    counter += retry
-                    if counter <= self._timeout:
-                        time.sleep(retry)
-                    else:
-                        self.logger.error('Timeout exceded')
-                        return False
-                self.logger.info("Instance %s now %s !" %
-                                 (iid.instance_id, expected_state))
-                return True
-            self.logger.info("Instance will be %s" % expected_state)
+        counter = 0
+        while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
+            self.logger.debug("Waiting for %s state... %s / %s" %
+                              (expected_state, counter, self._timeout))
+            counter += retry
+            if counter <= self._timeout:
+                time.sleep(retry)
+            else:
+                self.logger.error('Timeout exceded')
+                return False
+        self.logger.info("Instance %s now %s !" % (iid.instance_id, expected_state))
         return True
 
     def _create_inst_snap(self, iid):
@@ -329,14 +311,18 @@ class ManageSnapshot:
                              (iid.instance_id, iid.name))
 
             # Limit the number of backups if requested
-            if self._limit != -1:
-                if counter >= self._limit:
-                    self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
-                    break
+            if self._limit != -1 and counter >= self._limit:
+                self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
+                break
+            counter += 1
 
             # Pausing VM and skip if failed
-            if iid.initial_state == 'running' and \
-            self.check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap):
+            if iid.initial_state == 'running':
+                if self._no_hot_snap is True:
+                    self.logger.info('Instance is going to be shutdown')
+                if self._no_hot_snap is True and self._dry_run is False:
+                    self._conn.stop_instances(instance_ids=[iid.instance_id])
+                    self._check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap)
                 continue
 
             # Creating Snapshot
@@ -344,9 +330,11 @@ class ManageSnapshot:
 
             # Starting VM if was running
             if iid.initial_state == 'running':
-                self.check_inst_state('Starting instance', iid,
-                                           'running', self._no_hot_snap)
-            counter += 1
+                if self._no_hot_snap is True:
+                    self.logger.info('Instance is going to be started')
+                if self._no_hot_snap is True and self._dry_run is False:
+                    self._conn.start_instances(instance_ids=[iid.instance_id])
+                    self._check_inst_state('Starting instance', iid, 'running', self._no_hot_snap)
 
 
 def main():
