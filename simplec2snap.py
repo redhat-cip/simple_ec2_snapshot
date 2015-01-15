@@ -74,14 +74,11 @@ class Instance:
     Contruct instances and set/get attached disks
     """
 
-    def __init__(self, iid, rid, name, state, root_dev):
+    def __init__(self, iid, name, state, root_dev):
         """
         Set instance id
         :param iid: Instance ID
         :type iid: str
-
-        :param rid: Reservation ID
-        :type rid: str
 
         :param name: Name of the instance
         :type type: str
@@ -93,7 +90,6 @@ class Instance:
         :type root_dev: str
         """
         self.instance_id = iid
-        self.reservation = rid
         self.name = name
         self.initial_state = state
         self.root_dev = root_dev
@@ -212,12 +208,11 @@ class ManageSnapshot:
         # Create Instance object
         for iid in self._instance_list:
             # Get instance elements
-            instance = self._conn.get_all_instances(instance_ids=iid)[0]
-            rid = instance.id
+            instance = self._conn.get_all_instances(instance_ids=iid)[0].instances[0]
             name = instance.tags['Name']
             state = instance.state
             root_dev = instance.root_device_name
-            instance_id = Instance(iid, rid, name, state, root_dev)
+            instance_id = Instance(iid, name, state, root_dev)
             self._instances.append(instance_id)
             # Set disks
             filter = {'attachment.instance-id': iid}
@@ -291,11 +286,9 @@ class ManageSnapshot:
                                  ' (', vol, ')'])
             if self._dry_run is False:
                 snap_id = self._conn.create_snapshot(vol, snap_name)
-                self.logger.info(" - :snapshoting %s (%s) %s" %
-                                 (iid.instance_id, device, vol, snap_id.id))
+                self.logger.info("Snapshoting %s - %s" % (vol, snap_id.id))
             else:
-                self.logger.info(" - :snapshoting %s (%s) %s" %
-                                 (iid.instance_id, device, vol))
+                self.logger.info("Snapshoting %s - dry-run" % vol)
 
     def make_snapshot(self):
         """
@@ -311,19 +304,22 @@ class ManageSnapshot:
                              (iid.instance_id, iid.name))
 
             # Limit the number of backups if requested
+            self.logger.debug("Limit: %s" % self._limit)
             if self._limit != -1 and counter >= self._limit:
                 self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
                 break
             counter += 1
 
             # Pausing VM and skip if failed
+            self.logger.debug("Initial_state: %s, No hot snap: %s, Dry run: %s" %
+                              (iid.initial_state, self._no_hot_snap, self._dry_run))
             if iid.initial_state == 'running':
                 if self._no_hot_snap is True:
                     self.logger.info('Instance is going to be shutdown')
                 if self._no_hot_snap is True and self._dry_run is False:
                     self._conn.stop_instances(instance_ids=[iid.instance_id])
-                    self._check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap)
-                continue
+                    if self._check_inst_state(iid, 'stopped') is False:
+                        continue
 
             # Creating Snapshot
             self._create_inst_snap(iid)
@@ -334,7 +330,7 @@ class ManageSnapshot:
                     self.logger.info('Instance is going to be started')
                 if self._no_hot_snap is True and self._dry_run is False:
                     self._conn.start_instances(instance_ids=[iid.instance_id])
-                    self._check_inst_state('Starting instance', iid, 'running', self._no_hot_snap)
+                    self._check_inst_state(iid, 'running')
 
 
 def main():
