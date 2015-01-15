@@ -184,11 +184,10 @@ class ManageSnapshot:
         mode = 'run'
         if self._dry_run is True:
             mode = ' '.join(['dry', mode])
-        self.logger.info(' '.join(['== Launching', mode, 'mode ==']))
+        self.logger.info("== Launching %s mode ==" % mode)
 
         c = False
-        self.logger.info(' '.join(['Connecting to AWS with your Access key:',
-                                   self._access_key]))
+        self.logger.info("Connecting to AWS with your Access key: %s" % self._access_key)
         try:
             c = boto.ec2.connect_to_region(self._region,
                                            aws_access_key_id=self._key_id,
@@ -278,20 +277,19 @@ class ManageSnapshot:
 
                 counter = 0
                 while self._conn.get_all_instances(instance_ids=iid.instance_id)[0].instances[0].state != expected_state:
-                    self.logger.debug(''.join(['Waiting for ', expected_state,
-                                               ' state...', str(counter),
-                                               '/', str(self._timeout)]))
+                    self.logger.debug("Waiting for %s state... %s / %s" %
+                                      (expected_state, counter, self._timeout))
                     counter += retry
                     if counter <= self._timeout:
                         time.sleep(retry)
                     else:
                         self.logger.error('Timeout exceded')
                         return 1
-                self.logger.info(''.join(['Instance ', iid.instance_id, ' now ',
-                                          expected_state, ' !']))
+                self.logger.info("Instance %s now %s !" %
+                                 (iid.instance_id, expected_state))
                 return 0
             else:
-                self.logger.info(' '.join(['Instance will be', expected_state]))
+                self.logger.info("Instance will be %s" % expected_state)
         return 0
 
     def make_snapshot(self):
@@ -300,13 +298,12 @@ class ManageSnapshot:
         """
 
         if (len(self._instances) == 0):
-            print('No instances found with those parameters !')
+            self.logger.error('No instances found with those parameters !')
         else:
             counter = 0
             for iid in self._instances:
-                self.logger.info(''.join(['Working on instance ',
-                                          iid.instance_id,
-                                          ' (', iid.name, ')']))
+                self.logger.info("Working on instance %s (%s)" %
+                                 (iid.instance_id, iid.name))
 
                 # Pausing VM and skip if failed
                 if iid.initial_state == 'running':
@@ -337,8 +334,7 @@ class ManageSnapshot:
                                                                       device,
                                                                       ' (', vol,
                                                                       ')']))
-                        self.logger.info(' '.join([cur_snap,
-                                                  str(snap_id.id)]))
+                        self.logger.info("%s %s" % (cur_snap, snap_id.id))
                     else:
                         self.logger.info(cur_snap)
 
@@ -351,10 +347,7 @@ class ManageSnapshot:
                 if self._limit != -1:
                     counter += 1
                     if counter >= self._limit:
-                        self.logger.info(' '.join(['The requested limit of',
-                                                   'snapshots has been',
-                                                   'reached:',
-                                                   str(self._limit)]))
+                        self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
                         break
 
 
@@ -447,13 +440,12 @@ def main():
             if arg.key_id is None:
                 arg.key_id = config.get(arg.profile, 'aws_access_key_id')
         else:
-            print('fail', "Can't have permission to read credentials file")
+            print("Don't have permission to read credentials file")
             sys.exit(1)
 
     # Exit if no instance or tag has been set
     if arg.instance is None and arg.tags is None:
-        print(' '.join(['[FAIL] Please set at least an instance ID',
-                        'or a tag with its value']))
+        print('Please set at least instance ID or tag with value')
         sys.exit(1)
     else:
         # Create action
