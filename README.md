@@ -32,6 +32,22 @@ If you want to add an instance in addition of the previous tags:
 > ./simplec2snap.py -t Name 'instance*' -t env prod -i i-ad0fcc4b
 ```
 
+## Credentials file
+
+You can use a credentials file with several profiles. It should looks like this:
+```ini
+[default]
+aws_region = <region>
+aws_access_key_id = <key_id>
+aws_secret_access_key = <access_key>
+
+#[profile profile1]
+#aws_region = <region>
+#aws_access_key_id = <key_id>
+#aws_secret_access_key = <access_key>
+```
+The default one should be located in '~/.aws_cred'. You can override this with '-c' argument and '-p' to specify the profile fulfill into brackets.
+
 ## Dry Run mode
 
 Use the dry run mode (enabled by default) to see what actions will be performed when selecting a tag Name or an instance:
@@ -120,22 +136,6 @@ Still for auto-scaling groups, your root device may not be required to snapshot.
 2015-01-13 17:34:58,674 [INFO] Not snapshoting root device
 2015-01-13 17:34:58,674 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 )
 ```
-
-## Credentials file
-
-You can use a credentials file with several profiles. It should looks like this:
-```ini
-[default]
-aws_region = <region>
-aws_access_key_id = <key_id>
-aws_secret_access_key = <access_key>
-
-#[profile profile1]
-#aws_region = <region>
-#aws_access_key_id = <key_id>
-#aws_secret_access_key = <access_key>
-```
-The default one should be located in '~/.aws_cred'. You can override this with '-c' argument and '-p' to specify the profile fulfill into brackets.
 
 ## Help
 
