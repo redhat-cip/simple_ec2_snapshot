@@ -1,12 +1,17 @@
 #!/usr/bin/env python2
 # encoding: utf-8
-# Made by Pierre Mavro / Deimosfr
-# eNovance / RedHat
-
-# Dependancies:
+#
+# Authors:
+#   Pierre Mavro <pierre.mavro@enovance.com>
+#
+# Contributors:
+#   Hugo Rosnet <hugo.rosnet@enovance.com>
+#
+# Dependencies:
 # - python boto
-# On Debian: aptitude install python-boto
-# With pip: pip install boto
+#
+#  On Debian: aptitude install python-boto
+#  With pip: pip install boto
 
 import argparse
 import sys
@@ -195,7 +200,7 @@ class ManageSnapshot:
         except IndexError, e:
             self.logger.critical("Can't connect with the credentials: %s" % e)
             sys.exit(1)
-        return(c)
+        return c
 
     def _set_instance_info(self):
         """
@@ -206,15 +211,12 @@ class ManageSnapshot:
         self._instance_list = list(set(self._instance_list))
         # Create Instance object
         for iid in self._instance_list:
-            # Get reservation id
-            rid = self._conn.get_all_instances(instance_ids=iid)[0].id
-            # Get instance name
-            name = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].tags['Name']
-            # Get instance status
-            state = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].state
-            # Get root device
-            root_dev = self._conn.get_all_instances(instance_ids=iid)[0].instances[0].root_device_name
-            # Create instance
+            # Get instance elements
+            instance = self._conn.get_all_instances(instance_ids=iid)[0]
+            rid = instance.id
+            name = instance.tags['Name']
+            state = instance.state
+            root_dev = instance.root_device_name
             instance_id = Instance(iid, rid, name, state, root_dev)
             self._instances.append(instance_id)
             # Set disks
@@ -245,9 +247,8 @@ class ManageSnapshot:
             for instance in instances:
                 self._instance_list.append(instance.id)
 
-    def change_instance_state(self, message, iid, expected_state, no_hot_snap):
+    def check_inst_state(self, message, iid, expected_state, no_hot_snap):
         """
-        Start or stop instance
         Will wait until the expected state or until timeout will be reached
 
         TO BE REVIEWED
@@ -288,9 +289,31 @@ class ManageSnapshot:
                 self.logger.info("Instance %s now %s !" %
                                  (iid.instance_id, expected_state))
                 return 0
-            else:
-                self.logger.info("Instance will be %s" % expected_state)
+            self.logger.info("Instance will be %s" % expected_state)
         return 0
+
+    def _create_inst_snap(self, iid):
+        """
+        :param iid:
+        :type iid:
+        """
+        disks = iid.get_disks()
+        for vol, device in disks.iteritems():
+            # Removing root device if required
+            if self._no_root_device is True and device == iid.root_dev:
+                self.logger.info('Not snapshoting root device')
+                continue
+            # Make snapshot
+            snap_name = ''.join([iid.instance_id,
+                                 ' (', iid.name, ') - ', device,
+                                 ' (', vol, ')'])
+            if self._dry_run is False:
+                snap_id = self._conn.create_snapshot(vol, snap_name)
+                self.logger.info(" - :snapshoting %s (%s) %s" %
+                                 (iid.instance_id, device, vol, snap_id.id))
+            else:
+                self.logger.info(" - :snapshoting %s (%s) %s" %
+                                 (iid.instance_id, device, vol))
 
     def make_snapshot(self):
         """
@@ -299,56 +322,31 @@ class ManageSnapshot:
 
         if (len(self._instances) == 0):
             self.logger.error('No instances found with those parameters !')
-        else:
-            counter = 0
-            for iid in self._instances:
-                self.logger.info("Working on instance %s (%s)" %
-                                 (iid.instance_id, iid.name))
+            return
+        counter = 0
+        for iid in self._instances:
+            self.logger.info("Working on instance %s (%s)" %
+                             (iid.instance_id, iid.name))
 
-                # Pausing VM and skip if failed
-                if iid.initial_state == 'running':
-                    if self.change_instance_state('Shutting down instance',
-                                                  iid,
-                                                  'stopped',
-                                                  self._no_hot_snap) != 0:
-                        continue
+            # Limit the number of backups if requested
+            if self._limit != -1:
+                counter += 1
+                if counter >= self._limit:
+                    self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
+                    break
 
-                # Creating Snapshot
-                disks = iid.get_disks()
-                for vol, device in disks.iteritems():
-                    # Removing root device if required
-                    if self._no_root_device is True:
-                        if device == iid.root_dev:
-                            self.logger.info('Not snapshoting root device')
-                            continue
-                    # Make snapshot
-                    cur_snap = ' '.join(['  -', iid.instance_id,
-                                         ': snapshoting', device,
-                                         '(', vol, ')'])
-                    if self._dry_run is False:
-                        snap_id = self._conn.create_snapshot(vol,
-                                                             ''.join([iid.instance_id,
-                                                                      ' (',
-                                                                      iid.name,
-                                                                      ') - ',
-                                                                      device,
-                                                                      ' (', vol,
-                                                                      ')']))
-                        self.logger.info("%s %s" % (cur_snap, snap_id.id))
-                    else:
-                        self.logger.info(cur_snap)
+            # Pausing VM and skip if failed
+            if iid.initial_state == 'running' and \
+            self.check_inst_state('Shutting down instance', iid, 'stopped', self._no_hot_snap) != 0:
+                continue
 
-                # Starting VM if was running
-                if iid.initial_state == 'running':
-                    self.change_instance_state('Starting instance', iid,
-                                               'running', self._no_hot_snap)
+            # Creating Snapshot
+            self._create_inst_snap(iid)
 
-                # Limit the number of backups if requested
-                if self._limit != -1:
-                    counter += 1
-                    if counter >= self._limit:
-                        self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
-                        break
+            # Starting VM if was running
+            if iid.initial_state == 'running':
+                self.check_inst_state('Starting instance', iid,
+                                           'running', self._no_hot_snap)
 
 
 def main():
