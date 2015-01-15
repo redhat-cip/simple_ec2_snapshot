@@ -330,7 +330,6 @@ class ManageSnapshot:
 
             # Limit the number of backups if requested
             if self._limit != -1:
-                counter += 1
                 if counter >= self._limit:
                     self.logger.info("The requested limit of snapshots has been reached: %s" % self._limit)
                     break
@@ -347,6 +346,7 @@ class ManageSnapshot:
             if iid.initial_state == 'running':
                 self.check_inst_state('Starting instance', iid,
                                            'running', self._no_hot_snap)
+            counter += 1
 
 
 def main():
