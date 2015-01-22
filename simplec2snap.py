@@ -126,39 +126,38 @@ class ManageSnapshot:
                  dry_run, timeout, no_hot_snap, limit, no_root_device,
                  logger=__name__):
         """
-        TO BE COMPLETED
-        :param region:
-        :type region:
+        :param region: EC2 region
+        :type region: str
 
-        :param key_id:
-        :type key_id:
+        :param key_id: EC2 key identifier
+        :type key_id: str
 
-        :param access_key:
-        :type access_key:
+        :param access_key: EC2 access key
+        :type access_key: str
 
-        :param instance_list:
-        :type instance_list:
+        :param instance_list: filter on this list of instances
+        :type instance_list: list
 
-        :param tags:
-        :type tags:
+        :param tags: filter on this tags
+        :type tags: dict
 
-        :param dry_run:
-        :type dry_run:
+        :param dry_run: run without applying, just for test
+        :type dry_run: bool
 
-        :param timeout:
-        :type timeout:
+        :param timeout: maximum time to wait when instances are switching state
+        :type timeout: int
 
-        :param no_hot_snap:
-        :type no_hot_snap:
+        :param no_hot_snap: choose if you want to stop or not instance before snapshoting
+        :type no_hot_snap: bool
 
-        :param limit:
-        :type limit:
+        :param limit: limit the number of snapshots
+        :type limit: int
 
-        :param no_root_device:
-        :type no_root_device:
+        :param no_root_device: do not snapshot root devices
+        :type no_root_device: bool
 
-        :param logger:
-        :type logger:
+        :param logger: logger name
+        :type logger: str
 
         """
         self._region = region
@@ -180,6 +179,9 @@ class ManageSnapshot:
     def _validate_aws_connection(self):
         """
         Validate if AWS connection is OK or not
+
+        :returns: connection access
+        :rtype return: object
         """
         # Print running mode
         mode = 'run'
@@ -246,8 +248,7 @@ class ManageSnapshot:
         """
         Will wait until the expected state or until timeout will be reached
 
-        TO BE REVIEWED
-        :param iid: instance ID
+        :param iid: EC2 instance ID
         :type iid: object
 
         :param expected_state: instance expected state state
@@ -271,8 +272,8 @@ class ManageSnapshot:
 
     def _create_inst_snap(self, iid):
         """
-        :param iid:
-        :type iid:
+        :param iid: EC2 instance ID
+        :type iid: str
         """
         disks = iid.get_disks()
         for vol, device in disks.iteritems():
@@ -441,4 +442,5 @@ def main():
         sys.exit(0)
 
 if __name__ == "__main__":
+    main()
     main()
