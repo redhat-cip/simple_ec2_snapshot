@@ -300,6 +300,12 @@ class ManageSnapshot:
         :param iid: EC2 instance ID
         :type iid: str
         """
+        # Name cold and hot snapshots
+        if self._no_hot_snap is False:
+            stype = 'Hot'
+        else:
+            stype = 'Cold'
+
         disks = iid.get_disks()
         for vol, device in disks.iteritems():
             # Removing root device if required
@@ -309,15 +315,19 @@ class ManageSnapshot:
                 continue
             # Make snapshot
             snap_name = ''.join([iid.instance_id,
-                                 ' (', iid.name, ') - ', device,
+                                 ' (', iid.name, ') - ', stype, ' ', device,
                                  ' (', vol, ')'])
             if self._dry_run is False:
                 snap_id = self._conn.create_snapshot(vol, snap_name)
-                self.logger.info("Snapshoting %s(%s) - %s" %
-                                 (vol, device, snap_id.id))
+                snap_id.add_tags({'type': stype,
+                                  'volume': vol,
+                                  'device': device,
+                                  'instance name': iid.name})
+                self.logger.info("%s snapshot made for %s(%s) - %s" %
+                                 (stype, vol, device, snap_id.id))
             else:
-                self.logger.info("Snapshoting %s(%s) - dry-run" %
-                                 (vol, device))
+                self.logger.info("%s snapshot made for %s(%s) - dry-run" %
+                                 (stype, vol, device))
 
     def calulate_max_snap_age(self):
         """

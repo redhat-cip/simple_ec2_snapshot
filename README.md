@@ -58,11 +58,11 @@ Use the dry run mode (enabled by default) to see what actions will be performed 
 2015-01-26 17:05:25,954 [INFO] Connecting to AWS
 2015-01-26 17:05:25,955 [INFO] Getting instances information
 2015-01-26 17:05:28,341 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:05:28,341 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:05:28,341 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
 2015-01-26 17:05:28,341 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:05:28,341 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - dry-run
-2015-01-26 17:05:28,341 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
 ```
 
 ## Run mode
@@ -74,11 +74,11 @@ If you're ok with the previous dry run, then add '-u' for run mode:
 2015-01-26 17:06:19,163 [INFO] Connecting to AWS
 2015-01-26 17:06:19,163 [INFO] Getting instances information
 2015-01-26 17:06:21,083 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:06:21,352 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - snap-35adb8c4
-2015-01-26 17:06:21,587 [INFO] Snapshoting vol-22465c25(/dev/sda) - snap-36adb8c7
+2015-01-26 17:06:21,352 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - snap-35adb8c4
+2015-01-26 17:06:21,587 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - snap-36adb8c7
 2015-01-26 17:06:21,587 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:06:21,832 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - snap-3cadb8cd
-2015-01-26 17:06:22,087 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - snap-21adb8d0
+2015-01-26 17:06:21,832 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda) - snap-3cadb8cd
+2015-01-26 17:06:22,087 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - snap-21adb8d0
 ```
 
 ## Hot vs Cold snapshot
@@ -94,15 +94,15 @@ To do so, you have to add '-H' option:
 2015-01-26 17:07:12,490 [INFO] Working on instance i-e16cc205 (instance-name2)
 2015-01-26 17:07:12,490 [INFO] Instance is going to be shutdown
 2015-01-26 17:07:48,871 [INFO] Instance i-e16cc205 now stopped !
-2015-01-26 17:07:49,134 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - snap-a8afba59
-2015-01-26 17:07:49,379 [INFO] Snapshoting vol-22465c25(/dev/sda) - snap-adafba5c
+2015-01-26 17:07:49,134 [INFO] Cold snapshot made for vol-fa415bfd(/dev/sdb) - snap-a8afba59
+2015-01-26 17:07:49,379 [INFO] Cold snapshot made for vol-22465c25(/dev/sda) - snap-adafba5c
 2015-01-26 17:07:49,379 [INFO] Instance is going to be started
 2015-01-26 17:08:20,565 [INFO] Instance i-e16cc205 now running !
 2015-01-26 17:08:20,565 [INFO] Working on instance i-6f6ec08b (instance-name1)
 2015-01-26 17:08:20,565 [INFO] Instance is going to be shutdown
 2015-01-26 17:08:51,617 [INFO] Instance i-6f6ec08b now stopped !
-2015-01-26 17:08:51,853 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - snap-b1aebb40
-2015-01-26 17:08:52,098 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - snap-b2aebb43
+2015-01-26 17:08:51,853 [INFO] Cold snapshot made for vol-9d465c9a(/dev/sda) - snap-b1aebb40
+2015-01-26 17:08:52,098 [INFO] Cold snapshot made for vol-9c465c9b(/dev/sdb) - snap-b2aebb43
 2015-01-26 17:08:52,098 [INFO] Instance is going to be started
 2015-01-26 17:09:09,467 [INFO] Instance i-6f6ec08b now running !
 ```
@@ -116,8 +116,8 @@ In auto-scaling groups, you normally have x time the same running intance. Snaps
 2015-01-26 17:11:27,561 [INFO] Connecting to AWS
 2015-01-26 17:11:27,562 [INFO] Getting instances information
 2015-01-26 17:11:29,659 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:11:29,659 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:11:29,659 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
 2015-01-26 17:11:29,659 [INFO] Working on instance i-6f6ec08b (instance-name1)
 2015-01-26 17:11:29,660 [INFO] The requested limit of snapshots has been reached: 1
 ```
@@ -132,9 +132,9 @@ Still for auto-scaling groups, your root device may not be required to snapshot.
 2015-01-26 17:11:50,757 [INFO] Connecting to AWS
 2015-01-26 17:11:50,758 [INFO] Getting instances information
 2015-01-26 17:11:52,708 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:11:52,708 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
 2015-01-26 17:11:52,708 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:11:52,708 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
 ```
 
 ## Snapshot retention
@@ -167,13 +167,13 @@ Here -n is used to not make snapshots, only delete olds. But you can ask on the 
 2015-01-26 17:22:43,263 [INFO] Connecting to AWS
 2015-01-26 17:22:43,264 [INFO] Getting instances information
 2015-01-26 17:22:46,217 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:22:46,218 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:22:46,218 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
 2015-01-26 17:22:47,328 [INFO] Deleting snapshot snap-a8afba59
 2015-01-26 17:22:47,491 [INFO] Deleting snapshot snap-adafba5c
 2015-01-26 17:22:47,491 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:22:47,491 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - dry-run
-2015-01-26 17:22:47,492 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:22:47,491 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda) - dry-run
+2015-01-26 17:22:47,492 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
 2015-01-26 17:22:47,669 [INFO] Deleting snapshot snap-b1aebb40
 2015-01-26 17:22:47,842 [INFO] Deleting snapshot snap-b2aebb43
 ```
