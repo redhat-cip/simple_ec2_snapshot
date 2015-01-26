@@ -19,6 +19,7 @@ import boto.ec2
 import ConfigParser
 import os
 import time
+import datetime
 import logging
 
 LVL = {'INFO': logging.INFO,
@@ -124,7 +125,7 @@ class ManageSnapshot:
 
     def __init__(self, region, key_id, access_key, instance_list, tags,
                  dry_run, timeout, no_hot_snap, limit, no_root_device,
-                 logger=__name__):
+                 max_age, no_snap, logger=__name__):
         """
         :param region: EC2 region
         :type region: str
@@ -147,7 +148,8 @@ class ManageSnapshot:
         :param timeout: maximum time to wait when instances are switching state
         :type timeout: int
 
-        :param no_hot_snap: choose if you want to stop or not instance before snapshoting
+        :param no_hot_snap: choose if you want to stop
+                            or not instance before snapshoting
         :type no_hot_snap: bool
 
         :param limit: limit the number of snapshots
@@ -155,6 +157,12 @@ class ManageSnapshot:
 
         :param no_root_device: do not snapshot root devices
         :type no_root_device: bool
+
+        :param max_age: maximum age of snapshot to keep
+        :type max_age: list
+
+        :param no_snap: specify if snapshot needs to be done or not
+        :type no_snap: bool
 
         :param logger: logger name
         :type logger: str
@@ -170,8 +178,12 @@ class ManageSnapshot:
         self._no_hot_snap = no_hot_snap
         self._limit = limit
         self._no_root_device = no_root_device
-        self._instances = []
+        self._max_age = max_age
+        self._max_age_sec = 0
+        self._no_snap = no_snap
         self.logger = logging.getLogger(logger)
+
+        self._instances = []
         self._conn = self._validate_aws_connection()
         self._filter_instances()
         self._set_instance_info()
@@ -190,7 +202,8 @@ class ManageSnapshot:
         self.logger.info("== Launching %s mode ==" % mode)
 
         c = False
-        self.logger.info("Connecting to AWS with your Access key: %s" % self._access_key)
+        self.logger.info('Connecting to AWS')
+        self.logger.debug("Using Access key: %s" % self._access_key)
         try:
             c = boto.ec2.connect_to_region(self._region,
                                            aws_access_key_id=self._key_id,
@@ -225,6 +238,10 @@ class ManageSnapshot:
                 ids = [z for k in volumesinstance for z in k.instances]
                 for s in ids:
                     instance_id.add_disk(device.id, device.attach_data.device)
+        # Stop if no instances matched
+        if (len(self._instances) == 0):
+            self.logger.error('No instances found with those parameters !')
+            return
 
     def _filter_instances(self):
         """
@@ -232,6 +249,7 @@ class ManageSnapshot:
         """
         self.logger.info('Getting instances information')
         if len(self._tags) > 0:
+
             # Create a dictionary with tags to create filters
             filter_tags = {}
             for tag in self._tags:
@@ -242,7 +260,11 @@ class ManageSnapshot:
             reservations = self._conn.get_all_instances(filters=filter_tags)
             instances = [i for r in reservations for i in r.instances]
             for instance in instances:
-                self._instance_list.append(instance.id)
+                # Do not keep terminated instances
+                if self._conn.get_all_instances(instance_ids=instance.id)[0].instances[0].state == 'terminated':
+                    return
+                else:
+                    self._instance_list.append(instance.id)
 
     def _check_inst_state(self, iid, expected_state):
         """
@@ -267,11 +289,14 @@ class ManageSnapshot:
             else:
                 self.logger.error('Timeout exceded')
                 return False
-        self.logger.info("Instance %s now %s !" % (iid.instance_id, expected_state))
+        self.logger.info("Instance %s now %s !" %
+                         (iid.instance_id, expected_state))
         return True
 
     def _create_inst_snap(self, iid):
         """
+        Create instance snapshot
+
         :param iid: EC2 instance ID
         :type iid: str
         """
@@ -279,7 +304,8 @@ class ManageSnapshot:
         for vol, device in disks.iteritems():
             # Removing root device if required
             if self._no_root_device is True and device == iid.root_dev:
-                self.logger.info('Not snapshoting root device')
+                self.logger.debug('Not snapshoting root device %s(%s)' %
+                                  (vol, device))
                 continue
             # Make snapshot
             snap_name = ''.join([iid.instance_id,
@@ -287,22 +313,58 @@ class ManageSnapshot:
                                  ' (', vol, ')'])
             if self._dry_run is False:
                 snap_id = self._conn.create_snapshot(vol, snap_name)
-                self.logger.info("Snapshoting %s - %s" % (vol, snap_id.id))
+                self.logger.info("Snapshoting %s(%s) - %s" %
+                                 (vol, device, snap_id.id))
             else:
-                self.logger.info("Snapshoting %s - dry-run" % vol)
+                self.logger.info("Snapshoting %s(%s) - dry-run" %
+                                 (vol, device))
 
-    def make_snapshot(self):
+    def calulate_max_snap_age(self):
         """
-        Create snapshot on selected Instances ids
+        Calculate Snapshot age
         """
+        self.logger.debug('Calculating max age')
 
-        if (len(self._instances) == 0):
-            self.logger.error('No instances found with those parameters !')
-            return
+        # Check params
+        self._max_age[0] = int(self._max_age[0])
+        try:
+            self._max_age[0] == 0
+        except ValueError:
+            self.logger.error('Max age value cannot be 0')
+            sys.exit(1)
+        if self._max_age[0] == 0:
+            self.logger.error('Max age value cannot be 0')
+            sys.exit(1)
+
+        # Calculate the maximum allowed snapshot age
+        if self._max_age[1] == 's':
+            self._max_age_sec = self._max_age[0]
+        elif self._max_age[1] == 'm':
+            self._max_age_sec = self._max_age[0] * 60
+        elif self._max_age[1] == 'h':
+            self._max_age_sec = self._max_age[0] * 60 * 60
+        elif self._max_age[1] == 'd':
+            self._max_age_sec = self._max_age[0] * 60 * 60 * 24
+        elif self._max_age[1] == 'w':
+            self._max_age_sec = self._max_age[0] * 60 * 60 * 24 * 7
+        elif self._max_age[1] == 'M':
+            self._max_age_sec = self._max_age[0] * 60 * 60 * 24 * 30
+        elif self._max_age[1] == 'y':
+            self._max_age_sec = self._max_age[0] * 60 * 60 * 24 * 30 * 365
+        else:
+            self.logger.error("Can't find the correct value (here %s),\
+                              please choose between s/m/h/d/w/M/y" %
+                              self._max_age[1])
+            sys.exit(1)
+
+    def mk_rm_snapshot(self):
+        """
+        Create and remove snapshot on selected Instances ids
+        """
         counter = 0
         for iid in self._instances:
             self.logger.info("Working on instance %s (%s)" %
-                             (iid.instance_id, iid.name))
+                                (iid.instance_id, iid.name))
 
             # Limit the number of backups if requested
             self.logger.debug("Limit: %s" % self._limit)
@@ -311,27 +373,56 @@ class ManageSnapshot:
                 break
             counter += 1
 
-            # Pausing VM and skip if failed
-            self.logger.debug("Initial_state: %s, No hot snap: %s, Dry run: %s" %
-                              (iid.initial_state, self._no_hot_snap, self._dry_run))
-            if iid.initial_state == 'running':
-                if self._no_hot_snap is True:
-                    self.logger.info('Instance is going to be shutdown')
-                if self._no_hot_snap is True and self._dry_run is False:
-                    self._conn.stop_instances(instance_ids=[iid.instance_id])
-                    if self._check_inst_state(iid, 'stopped') is False:
-                        continue
+            if self._no_snap is False:
+                # Pausing VM and skip if failed
+                self.logger.debug("Initial_state: %s, No hot snap: %s, Dry run: %s" %
+                                  (iid.initial_state, self._no_hot_snap, self._dry_run))
+                if iid.initial_state == 'running':
+                    if self._no_hot_snap is True:
+                        self.logger.info('Instance is going to be shutdown')
+                    if self._no_hot_snap is True and self._dry_run is False:
+                        self._conn.stop_instances(instance_ids=[iid.instance_id])
+                        if self._check_inst_state(iid, 'stopped') is False:
+                            continue
 
-            # Creating Snapshot
-            self._create_inst_snap(iid)
+                # Creating Snapshots
+                self._create_inst_snap(iid)
 
-            # Starting VM if was running
-            if iid.initial_state == 'running':
-                if self._no_hot_snap is True:
-                    self.logger.info('Instance is going to be started')
-                if self._no_hot_snap is True and self._dry_run is False:
-                    self._conn.start_instances(instance_ids=[iid.instance_id])
-                    self._check_inst_state(iid, 'running')
+                # Starting VM if was running
+                if iid.initial_state == 'running':
+                    if self._no_hot_snap is True:
+                        self.logger.info('Instance is going to be started')
+                    if self._no_hot_snap is True and self._dry_run is False:
+                        self._conn.start_instances(instance_ids=[iid.instance_id])
+                        self._check_inst_state(iid, 'running')
+
+            # Delete old Snapshots
+            if len(self._max_age) > 0:
+                self._remove_old_snap(iid)
+
+    def _remove_old_snap(self, iid):
+        """
+        Remove old snapshots
+
+        :param iid: EC2 instance ID
+        :type iid: object
+        """
+        disks = iid.get_disks()
+        for vol, device in disks.iteritems():
+            snapshots = self._conn.get_all_snapshots(filters={'volume-id': vol})
+            for snapshot in snapshots:
+                snap_date = snapshot.start_time
+                timestamp = datetime.datetime.strptime(snap_date,
+                                                       '%Y-%m-%dT%H:%M:%S.000Z')
+                self.logger.debug("Volume %s(%s) has snapshot %s on %s" %
+                                  (vol, device, snapshot.id, timestamp))
+                delta_seconds = int((datetime.datetime.utcnow() - timestamp).total_seconds())
+                if delta_seconds > self._max_age_sec:
+                    self.logger.info("Deleting snapshot %s" % snapshot.id)
+                    if self._dry_run is False:
+                        snapshot.delete()
+                else:
+                    self.logger.debug("Do not delete snapshot %s" % snapshot.id)
 
 
 def main():
@@ -389,6 +480,14 @@ def main():
                         action='store_true', default=False,
                         help='Do not snapshot root device')
 
+    parser.add_argument('-g', '--max_age',
+                        type=str, default=[],
+                        metavar='ARG', nargs=2,
+                        help='Maximum snapshot age to keep (<int> <s/m/h/d/w/M/y>) (ex: 1 h for one hour)')
+    parser.add_argument('-n', '--no_snap',
+                        action='store_true', default=False,
+                        help='Do not make snapshot (useful when combien to -g option)')
+
     parser.add_argument('-f', '--file_output', metavar='FILE',
                         default=None, action='store', type=str,
                         help='Set an output file')
@@ -432,15 +531,19 @@ def main():
         sys.exit(1)
     else:
         # Create action
-        selected_intances = ManageSnapshot(arg.region, arg.key_id, arg.access_key,
-                                           arg.instance, arg.tags, arg.dry_run,
-                                           arg.timeout, arg.no_hot_snap, arg.limit,
-                                           arg.no_root_device)
+        selected_instances = ManageSnapshot(arg.region, arg.key_id,
+                                            arg.access_key, arg.instance,
+                                            arg.tags, arg.dry_run, arg.timeout,
+                                            arg.no_hot_snap, arg.limit,
+                                            arg.no_root_device, arg.max_age,
+                                            arg.no_snap)
+        # Calculate max snapshot age
+        if len(arg.max_age) > 0:
+            selected_instances.calulate_max_snap_age()
         # Launch snapshot
-        selected_intances.make_snapshot()
+        selected_instances.mk_rm_snapshot()
 
         sys.exit(0)
 
 if __name__ == "__main__":
-    main()
     main()

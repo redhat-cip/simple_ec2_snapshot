@@ -12,6 +12,7 @@ With Simple EC2 Snapshot supports:
 * Credentials file multiple with profiles
 * Limit the number of snapshots
 * Restrict snapshots to data disks only
+* Snapshot retention
 
 ## Filters
 
@@ -52,32 +53,32 @@ The default one should be located in '~/.aws_cred'. You can override this with '
 
 Use the dry run mode (enabled by default) to see what actions will be performed when selecting a tag Name or an instance:
 ```
-> ./simplec2snap.py -t Name 'instance-name-*'
-2015-01-13 12:07:17,015 [INFO] == Launching dry run mode ==
-2015-01-13 12:07:17,016 [INFO] Connecting to AWS with your Access key: xxxxx
-2015-01-13 12:07:17,016 [INFO] Getting instances information
-2015-01-13 12:07:18,957 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
-2015-01-13 12:07:18,957 [INFO]   - i-ad0fcc4b : snapshoting /dev/sda ( vol-faefbae6 )
-2015-01-13 12:07:18,957 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 )
-2015-01-13 12:07:18,957 [INFO] Working on instance i-56489db2 (instance-name-2)
-2015-01-13 12:07:18,957 [INFO]   - i-56489db2 : snapshoting /dev/sda ( vol-76b1bb71 )
-2015-01-13 12:07:18,957 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 )
+> ./simplec2snap.py -t Name "instance-name*"
+2015-01-26 17:05:25,954 [INFO] == Launching dry run mode ==
+2015-01-26 17:05:25,954 [INFO] Connecting to AWS
+2015-01-26 17:05:25,955 [INFO] Getting instances information
+2015-01-26 17:05:28,341 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:05:28,341 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:05:28,341 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:05:28,341 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:05:28,341 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - dry-run
+2015-01-26 17:05:28,341 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
 ```
 
 ## Run mode
 
 If you're ok with the previous dry run, then add '-u' for run mode:
 ```
-> ./simplec2snap.py -t Name 'instance-name-*' -u
-2015-01-13 12:07:10,733 [INFO] == Launching run mode ==
-2015-01-13 14:57:25,470 [INFO] Connecting to AWS with your Access key: xxxxx
-2015-01-13 14:57:25,471 [INFO] Getting instances information
-2015-01-13 14:57:27,927 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
-2015-01-13 14:57:28,315 [INFO]   - i-ad0fcc4b : snapshoting /dev/sda ( vol-faefbae6 ) snap-d061f521
-2015-01-13 14:57:28,851 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 ) snap-d661f527
-2015-01-13 14:57:28,851 [INFO] Working on instance i-56489db2 (instance-name-2)
-2015-01-13 14:57:29,343 [INFO]   - i-56489db2 : snapshoting /dev/sda ( vol-76b1bb71 ) snap-c161f530
-2015-01-13 14:57:29,822 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 ) snap-c761f536
+> ./simplec2snap.py -t Name "instance-name*" -u
+2015-01-26 17:06:19,163 [INFO] == Launching run mode ==
+2015-01-26 17:06:19,163 [INFO] Connecting to AWS
+2015-01-26 17:06:19,163 [INFO] Getting instances information
+2015-01-26 17:06:21,083 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:06:21,352 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - snap-35adb8c4
+2015-01-26 17:06:21,587 [INFO] Snapshoting vol-22465c25(/dev/sda) - snap-36adb8c7
+2015-01-26 17:06:21,587 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:06:21,832 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - snap-3cadb8cd
+2015-01-26 17:06:22,087 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - snap-21adb8d0
 ```
 
 ## Hot vs Cold snapshot
@@ -86,38 +87,39 @@ By default Hot mode is selected to perform snapshot without stopping instances. 
 
 To do so, you have to add '-H' option:
 ```
-> ./simplec2snap.py -t Name 'instance-name-*' -u -H
-2015-01-13 14:57:33,925 [INFO] == Launching run mode ==
-2015-01-13 14:57:33,925 [INFO] Connecting to AWS with your Access key: xxxxx
-2015-01-13 14:57:33,926 [INFO] Getting instances information
-2015-01-13 14:57:36,483 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
-2015-01-13 14:57:36,483 [INFO] Instance is going to be shutdown
-2015-01-13 14:58:22,754 [INFO] Instance i-ad0fcc4b now stopped !
-2015-01-13 14:58:23,163 [INFO]   - i-ad0fcc4b : snapshoting /dev/sda ( vol-faefbae6 ) snap-4b61f5ba
-2015-01-13 14:58:23,582 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 ) snap-4c61f5bd
-2015-01-13 14:58:23,582 [INFO] Instance is going to be started
-2015-01-13 14:58:54,924 [INFO] Instance i-ad0fcc4b now running !
-2015-01-13 14:58:54,924 [INFO] Working on instance i-56489db2 (instance-name-2)
-2015-01-13 14:58:54,924 [INFO] Instance is going to be shutdown
-2015-01-13 14:59:31,104 [INFO] Instance i-56489db2 now stopped !
-2015-01-13 14:59:31,523 [INFO]   - i-56489db2 : snapshoting /dev/sda ( vol-76b1bb71 ) snap-ae62f65f
-2015-01-13 14:59:32,007 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 ) snap-9362f662
-2015-01-13 14:59:32,007 [INFO] Instance is going to be started
-2015-01-13 14:59:53,023 [INFO] Instance i-56489db2 now running !
+> ./simplec2snap.py -t Name "instance-name*" -u -H
+2015-01-26 17:07:10,281 [INFO] == Launching run mode ==
+2015-01-26 17:07:10,281 [INFO] Connecting to AWS
+2015-01-26 17:07:10,282 [INFO] Getting instances information
+2015-01-26 17:07:12,490 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:07:12,490 [INFO] Instance is going to be shutdown
+2015-01-26 17:07:48,871 [INFO] Instance i-e16cc205 now stopped !
+2015-01-26 17:07:49,134 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - snap-a8afba59
+2015-01-26 17:07:49,379 [INFO] Snapshoting vol-22465c25(/dev/sda) - snap-adafba5c
+2015-01-26 17:07:49,379 [INFO] Instance is going to be started
+2015-01-26 17:08:20,565 [INFO] Instance i-e16cc205 now running !
+2015-01-26 17:08:20,565 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:08:20,565 [INFO] Instance is going to be shutdown
+2015-01-26 17:08:51,617 [INFO] Instance i-6f6ec08b now stopped !
+2015-01-26 17:08:51,853 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - snap-b1aebb40
+2015-01-26 17:08:52,098 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - snap-b2aebb43
+2015-01-26 17:08:52,098 [INFO] Instance is going to be started
+2015-01-26 17:09:09,467 [INFO] Instance i-6f6ec08b now running !
 ```
 
 ## Limit snapshots for auto-scaling group
 
 In auto-scaling groups, you normally have x time the same running intance. Snapshoting a huge number of time the same instance may not be very interesting. That's why you can limit the number of snapshot by using '-l' command followed by the number of desired snapshot. If I only want one:
 ```
-> ./simplec2snap.py -t Name 'instance-name-*' -l 1
-2015-01-13 15:26:38,532 [INFO] == Launching dry run mode ==
-2015-01-13 15:26:38,532 [INFO] Connecting to AWS with your Access key: xxxxx
-2015-01-13 15:26:38,533 [INFO] Getting instances information
-2015-01-13 15:26:40,565 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
-2015-01-13 15:26:40,565 [INFO]   - i-ad0fcc4b : snapshoting /dev/sda ( vol-faefbae6 )
-2015-01-13 15:26:40,565 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 )
-2015-01-13 15:26:40,565 [INFO] The requested limit of snapshots has been reached: 1
+> ./simplec2snap.py -t Name "instance-name*" -l 1 
+2015-01-26 17:11:27,561 [INFO] == Launching dry run mode ==
+2015-01-26 17:11:27,561 [INFO] Connecting to AWS
+2015-01-26 17:11:27,562 [INFO] Getting instances information
+2015-01-26 17:11:29,659 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:11:29,659 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:11:29,659 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:11:29,659 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:11:29,660 [INFO] The requested limit of snapshots has been reached: 1
 ```
 
 ## Remove root device from snapshots
@@ -125,27 +127,66 @@ In auto-scaling groups, you normally have x time the same running intance. Snaps
 Still for auto-scaling groups, your root device may not be required to snapshot. Generally because it may be builded from a configuration manager and you just don't care of it. So the goal is to remove it from the snapshot list, you can so use '-o' option:
 
 ```
-> ./simplec2snap.py -t Name 'instance-name-*' -o
-2015-01-13 17:34:56,631 [INFO] == Launching dry run mode ==
-2015-01-13 17:34:56,631 [INFO] Connecting to AWS with your Access key: xxxxx
-2015-01-13 17:34:56,631 [INFO] Getting instances information
-2015-01-13 17:34:58,674 [INFO] Working on instance i-ad0fcc4b (instance-name-1)
-2015-01-13 17:34:58,674 [INFO] Not snapshoting root device
-2015-01-13 17:34:58,674 [INFO]   - i-ad0fcc4b : snapshoting /dev/sdf ( vol-2e742a32 )
-2015-01-13 17:34:58,674 [INFO] Working on instance i-56489db2 (instance-name-2)
-2015-01-13 17:34:58,674 [INFO] Not snapshoting root device
-2015-01-13 17:34:58,674 [INFO]   - i-56489db2 : snapshoting /dev/sdb ( vol-75b1bb72 )
+> ./simplec2snap.py -t Name "instance-name*" -o  
+2015-01-26 17:11:50,757 [INFO] == Launching dry run mode ==
+2015-01-26 17:11:50,757 [INFO] Connecting to AWS
+2015-01-26 17:11:50,758 [INFO] Getting instances information
+2015-01-26 17:11:52,708 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:11:52,708 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:11:52,708 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:11:52,708 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
+```
+
+## Snapshot retention
+
+You can define the retention of your backups. You need to specify 2 args:
+
+* Number: sepcify a number for day, week... which is defined in the second arg
+* Time element: specify s(second), m(min), h(hour), d(day), w(week), M(month), y(year)
+
+So for example, if you want to keep snapshots for 3 weeks and delete the old ones, you have to set: 3 w.
+
+Here is a basic example where I want to delete snapshots older than 10 days:
+```
+> ./simplec2snap.py -t Name "instance-name*" -n -g 10 d
+2015-01-26 17:21:33,616 [INFO] == Launching dry run mode ==
+2015-01-26 17:21:33,616 [INFO] Connecting to AWS
+2015-01-26 17:21:33,617 [INFO] Getting instances information
+2015-01-26 17:21:36,201 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:21:36,334 [INFO] Deleting snapshot snap-a8afba59
+2015-01-26 17:21:36,462 [INFO] Deleting snapshot snap-adafba5c
+2015-01-26 17:21:36,462 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:21:36,566 [INFO] Deleting snapshot snap-b1aebb40
+2015-01-26 17:21:36,683 [INFO] Deleting snapshot snap-b2aebb43
+```
+
+Here -n is used to not make snapshots, only delete olds. But you can ask on the same line to make snapshots AND remove old ones:
+```
+> ./simplec2snap.py -t Name "instance-name*" -g 10 m   
+2015-01-26 17:22:43,263 [INFO] == Launching dry run mode ==
+2015-01-26 17:22:43,263 [INFO] Connecting to AWS
+2015-01-26 17:22:43,264 [INFO] Getting instances information
+2015-01-26 17:22:46,217 [INFO] Working on instance i-e16cc205 (instance-name2)
+2015-01-26 17:22:46,218 [INFO] Snapshoting vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:22:46,218 [INFO] Snapshoting vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:22:47,328 [INFO] Deleting snapshot snap-a8afba59
+2015-01-26 17:22:47,491 [INFO] Deleting snapshot snap-adafba5c
+2015-01-26 17:22:47,491 [INFO] Working on instance i-6f6ec08b (instance-name1)
+2015-01-26 17:22:47,491 [INFO] Snapshoting vol-9d465c9a(/dev/sda) - dry-run
+2015-01-26 17:22:47,492 [INFO] Snapshoting vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:22:47,669 [INFO] Deleting snapshot snap-b1aebb40
+2015-01-26 17:22:47,842 [INFO] Deleting snapshot snap-b2aebb43
 ```
 
 ## Help
 
 Here is the help with the complete list of options:
 ```
-> ./simplec2snap.py
+> ./simplec2snap.py 
 usage: simplec2snap.py [-h] [-r REGION] [-k KEY_ID] [-a ACCESS_KEY]
                        [-c CREDENTIALS] [-p CRED_PROFILE] [-i INSTANCE_ID]
                        [-t ARG ARG] [-u] [-l LIMIT] [-H] [-m COLDSNAP_TIMEOUT]
-                       [-f FILE] [-s] [-v LEVEL] [-V]
+                       [-o] [-g ARG ARG] [-n] [-f FILE] [-s] [-v LEVEL] [-V]
 
 Simple EC2 Snapshot utility
 
@@ -159,7 +200,7 @@ optional arguments:
                         Set AWS Access Key (default: None)
   -c CREDENTIALS, --credentials CREDENTIALS
                         Credentials file path (default:
-                        /home/pmavro/.aws_cred)
+                        /home/instance-name/.aws_cred)
   -p CRED_PROFILE, --profile CRED_PROFILE
                         Credentials profile file defined in credentials file
                         (default: default)
@@ -178,6 +219,12 @@ optional arguments:
   -m COLDSNAP_TIMEOUT, --timeout COLDSNAP_TIMEOUT
                         Instance timeout (in seconds) for stop and start
                         during a cold snapshot (default: 600)
+  -o, --no_root_device  Do not snapshot root device (default: False)
+  -g ARG ARG, --max_age ARG ARG
+                        Maximum snapshot age to keep (<int> <s/m/h/d/w/M/y>)
+                        (ex: 1 h for one hour) (default: [])
+  -n, --no_snap         Do not make snapshot (useful when combien to -g
+                        option) (default: False)
   -f FILE, --file_output FILE
                         Set an output file (default: None)
   -s, --stdout          Log output to console (stdout) (default: True)
