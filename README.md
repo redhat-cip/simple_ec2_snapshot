@@ -12,7 +12,7 @@ With Simple EC2 Snapshot supports:
 * Credentials file multiple with profiles
 * Limit the number of snapshots
 * Restrict snapshots to data disks only
-* Snapshot retention
+* Snapshot retention over time or for a given number
 
 ## Filters
 
@@ -139,6 +139,10 @@ Still for auto-scaling groups, your root device may not be required to snapshot.
 
 ## Snapshot retention
 
+There are 2 methods for snapshot retention. Choose the best one for your needs.
+
+### Keep snapshots over time
+
 You can define the retention of your backups. You need to specify 2 args:
 
 * Number: sepcify a number for day, week... which is defined in the second arg
@@ -178,7 +182,7 @@ Here -n is used to not make snapshots, only delete olds. But you can ask on the 
 2015-01-26 17:22:47,842 [INFO] Deleting snapshot snap-b2aebb43 (vol-9c465c9b|/dev/sdb)
 ```
 
-## Keep at least x snapshots
+### Keep at least a given number of snapshots
 
 Another solution to manage the retention of your snapshots is to specify how many snapshots you want to keep. For example, if I have 5 snapshots per device of an instance and want to keep the last 4 ones:
 ```
