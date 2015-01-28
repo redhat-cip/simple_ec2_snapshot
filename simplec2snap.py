@@ -125,7 +125,7 @@ class ManageSnapshot:
     """
 
     def __init__(self, region, key_id, access_key, instance_list, tags,
-                 dry_run, timeout, no_hot_snap, limit, no_root_device,
+                 dry_run, timeout, cold_snap, limit, no_root_device,
                  max_age, no_snap, keep_last_snapshots, logger=__name__):
         """
         :param region: EC2 region
@@ -149,9 +149,9 @@ class ManageSnapshot:
         :param timeout: maximum time to wait when instances are switching state
         :type timeout: int
 
-        :param no_hot_snap: choose if you want to stop
+        :param cold_snap: choose if you want to stop
                             or not instance before snapshoting
-        :type no_hot_snap: bool
+        :type cold_snap: bool
 
         :param limit: limit the number of snapshots
         :type limit: int
@@ -179,7 +179,7 @@ class ManageSnapshot:
         self._tags = tags
         self._dry_run = dry_run
         self._timeout = timeout
-        self._no_hot_snap = no_hot_snap
+        self._cold_snap = cold_snap
         self._limit = limit
         self._no_root_device = no_root_device
         self._max_age = max_age
@@ -306,7 +306,7 @@ class ManageSnapshot:
         :type iid: str
         """
         # Name cold and hot snapshots
-        if self._no_hot_snap is False:
+        if self._cold_snap is False:
             stype = 'Hot'
         else:
             stype = 'Cold'
@@ -379,7 +379,7 @@ class ManageSnapshot:
         counter = 0
         for iid in self._instances:
             self.logger.info("Working on instance %s (%s)" %
-                                (iid.instance_id, iid.name))
+                             (iid.instance_id, iid.name))
 
             # Limit the number of backups if requested
             self.logger.debug("Limit: %s" % self._limit)
@@ -391,11 +391,11 @@ class ManageSnapshot:
             if self._no_snap is False:
                 # Pausing VM and skip if failed
                 self.logger.debug("Initial_state: %s, No hot snap: %s, Dry run: %s" %
-                                  (iid.initial_state, self._no_hot_snap, self._dry_run))
+                                  (iid.initial_state, self._cold_snap, self._dry_run))
                 if iid.initial_state == 'running':
-                    if self._no_hot_snap is True:
+                    if self._cold_snap is True:
                         self.logger.info('Instance is going to be shutdown')
-                    if self._no_hot_snap is True and self._dry_run is False:
+                    if self._cold_snap is True and self._dry_run is False:
                         self._conn.stop_instances(instance_ids=[iid.instance_id])
                         if self._check_inst_state(iid, 'stopped') is False:
                             continue
@@ -405,9 +405,9 @@ class ManageSnapshot:
 
                 # Starting VM if was running
                 if iid.initial_state == 'running':
-                    if self._no_hot_snap is True:
+                    if self._cold_snap is True:
                         self.logger.info('Instance is going to be started')
-                    if self._no_hot_snap is True and self._dry_run is False:
+                    if self._cold_snap is True and self._dry_run is False:
                         self._conn.start_instances(instance_ids=[iid.instance_id])
                         self._check_inst_state(iid, 'running')
 
@@ -511,7 +511,7 @@ def main():
                         action='store', default=-1, type=int,
                         help=' '.join(['Limit the number of snapshot (can be',
                                        'usefull with auto-scaling groups)']))
-    parser.add_argument('-H', '--no_hot_snap',
+    parser.add_argument('-H', '--cold_snap',
                         action='store_true', default=False,
                         help='Make cold snapshot for a better consistency \
                         (Recommended)')
@@ -582,7 +582,7 @@ def main():
         selected_instances = ManageSnapshot(arg.region, arg.key_id,
                                             arg.access_key, arg.instance,
                                             arg.tags, arg.dry_run, arg.timeout,
-                                            arg.no_hot_snap, arg.limit,
+                                            arg.cold_snap, arg.limit,
                                             arg.no_root_device, arg.max_age,
                                             arg.no_snap,
                                             arg.keep_last_snapshots)

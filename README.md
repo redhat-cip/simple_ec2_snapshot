@@ -206,7 +206,8 @@ Here is the help with the complete list of options:
 usage: simplec2snap.py [-h] [-r REGION] [-k KEY_ID] [-a ACCESS_KEY]
                        [-c CREDENTIALS] [-p CRED_PROFILE] [-i INSTANCE_ID]
                        [-t ARG ARG] [-u] [-l LIMIT] [-H] [-m COLDSNAP_TIMEOUT]
-                       [-o] [-g ARG ARG] [-n] [-f FILE] [-s] [-v LEVEL] [-V]
+                       [-o] [-g ARG ARG] [-d KEEP_LAST_SNAPSHOTS] [-n]
+                       [-f FILE] [-s] [-v LEVEL] [-V]
 
 Simple EC2 Snapshot utility
 
@@ -220,7 +221,7 @@ optional arguments:
                         Set AWS Access Key (default: None)
   -c CREDENTIALS, --credentials CREDENTIALS
                         Credentials file path (default:
-                        /home/instance-name/.aws_cred)
+                        /home/pmavro/.aws_cred)
   -p CRED_PROFILE, --profile CRED_PROFILE
                         Credentials profile file defined in credentials file
                         (default: default)
@@ -234,7 +235,7 @@ optional arguments:
   -l LIMIT, --limit LIMIT
                         Limit the number of snapshot (can be usefull with
                         auto-scaling groups) (default: -1)
-  -H, --no_hot_snap     Make cold snapshot for a better consistency
+  -H, --cold_snap       Make cold snapshot for a better consistency
                         (Recommended) (default: False)
   -m COLDSNAP_TIMEOUT, --timeout COLDSNAP_TIMEOUT
                         Instance timeout (in seconds) for stop and start
@@ -243,6 +244,8 @@ optional arguments:
   -g ARG ARG, --max_age ARG ARG
                         Maximum snapshot age to keep (<int> <s/m/h/d/w/M/y>)
                         (ex: 1 h for one hour) (default: [])
+  -d KEEP_LAST_SNAPSHOTS, --keep_last_snapshots KEEP_LAST_SNAPSHOTS
+                        Keep the x last snapshots (default: 0)
   -n, --no_snap         Do not make snapshot (useful when combien to -g
                         option) (default: False)
   -f FILE, --file_output FILE
