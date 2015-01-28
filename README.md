@@ -1,4 +1,4 @@
-simple_ec2_snapshot
+Simple EC2 Snapshot
 ===================
 
 Simple solution to backup ec2 instances using snapshots
@@ -13,6 +13,13 @@ With Simple EC2 Snapshot supports:
 * Limit the number of snapshots
 * Restrict snapshots to data disks only
 * Snapshot retention over time or for a given number
+
+## Installation
+
+To install the tool, the simplest solution is to use pip:
+```
+pip install simplec2snap
+```
 
 ## Filters
 
