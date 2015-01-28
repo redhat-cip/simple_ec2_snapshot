@@ -23,6 +23,8 @@ import datetime
 import logging
 from collections import OrderedDict
 
+__version__ = 'v0.4'
+
 LVL = {'INFO': logging.INFO,
        'DEBUG': logging.DEBUG,
        'ERROR': logging.ERROR,
@@ -546,7 +548,8 @@ def main():
                         help='Verbosity level: DEBUG/INFO/ERROR/CRITICAL')
 
     parser.add_argument('-V', '--version',
-                        action='version', version='v0.1 Licence GPLv2',
+                        action='version',
+                        version=' '.join([__version__, 'Licence GPLv2+']),
                         help='Print version number')
 
     # Print help if no args supplied
