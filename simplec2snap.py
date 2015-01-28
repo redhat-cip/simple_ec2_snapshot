@@ -21,6 +21,7 @@ import os
 import time
 import datetime
 import logging
+from collections import OrderedDict
 
 LVL = {'INFO': logging.INFO,
        'DEBUG': logging.DEBUG,
@@ -125,7 +126,7 @@ class ManageSnapshot:
 
     def __init__(self, region, key_id, access_key, instance_list, tags,
                  dry_run, timeout, no_hot_snap, limit, no_root_device,
-                 max_age, no_snap, logger=__name__):
+                 max_age, no_snap, keep_last_snapshots, logger=__name__):
         """
         :param region: EC2 region
         :type region: str
@@ -164,6 +165,9 @@ class ManageSnapshot:
         :param no_snap: specify if snapshot needs to be done or not
         :type no_snap: bool
 
+        :param keep_last_snapshots: keep at least x snapshots
+        :type keep_last_snapshots: int
+
         :param logger: logger name
         :type logger: str
 
@@ -181,6 +185,7 @@ class ManageSnapshot:
         self._max_age = max_age
         self._max_age_sec = 0
         self._no_snap = no_snap
+        self._keep_last_snapshots = keep_last_snapshots
         self.logger = logging.getLogger(logger)
 
         self._instances = []
@@ -326,7 +331,7 @@ class ManageSnapshot:
                 self.logger.info("%s snapshot made for %s(%s) - %s" %
                                  (stype, vol, device, snap_id.id))
             else:
-                self.logger.info("%s snapshot made for %s(%s) - dry-run" %
+                self.logger.info("%s snapshot made for %s(%s)" %
                                  (stype, vol, device))
 
     def calulate_max_snap_age(self):
@@ -407,7 +412,7 @@ class ManageSnapshot:
                         self._check_inst_state(iid, 'running')
 
             # Delete old Snapshots
-            if len(self._max_age) > 0:
+            if len(self._max_age) > 0 or self._keep_last_snapshots > 0:
                 self._remove_old_snap(iid)
 
     def _remove_old_snap(self, iid):
@@ -420,6 +425,8 @@ class ManageSnapshot:
         disks = iid.get_disks()
         for vol, device in disks.iteritems():
             snapshots = self._conn.get_all_snapshots(filters={'volume-id': vol})
+            snapshots_tstamp = {}
+
             for snapshot in snapshots:
                 snap_date = snapshot.start_time
                 timestamp = datetime.datetime.strptime(snap_date,
@@ -427,12 +434,38 @@ class ManageSnapshot:
                 self.logger.debug("Volume %s(%s) has snapshot %s on %s" %
                                   (vol, device, snapshot.id, timestamp))
                 delta_seconds = int((datetime.datetime.utcnow() - timestamp).total_seconds())
-                if delta_seconds > self._max_age_sec:
-                    self.logger.info("Deleting snapshot %s" % snapshot.id)
-                    if self._dry_run is False:
-                        snapshot.delete()
-                else:
-                    self.logger.debug("Do not delete snapshot %s" % snapshot.id)
+
+                # When max_age arg is set
+                if len(self._max_age) > 0:
+                    if delta_seconds > self._max_age_sec:
+                        self.logger.info("Deleting snapshot %s (%s|%s)" %
+                                         (snapshot.id, vol, device))
+                        if self._dry_run is False:
+                            snapshot.delete()
+                    else:
+                        self.logger.debug("Do not delete snapshot %s" %
+                                          snapshot.id)
+
+                # When keep_last_snapshots arg is set store them in a dict
+                elif self._keep_last_snapshots > 0:
+                    snapshots_tstamp[snapshot.id] = delta_seconds
+
+            # Kepp at least the desired number of snapshots
+            if self._keep_last_snapshots > 0:
+                counter = 1
+                # Sort snapshots by timestamp
+                snapshots_tstamp = OrderedDict(sorted(snapshots_tstamp.items(), key=lambda v: v[1]))
+                for snapshotid, delta_tstamp in snapshots_tstamp.iteritems():
+                    if counter > self._keep_last_snapshots:
+                        self.logger.info("Deleting snapshot %s (%s|%s)" %
+                                         (snapshotid, vol, device))
+                        if self._dry_run is False:
+                            snapshot = self._conn.get_all_snapshots(snapshot_ids=snapshotid)
+                            snapshot[0].delete()
+                    else:
+                        self.logger.debug("Do not delete snapshot %s (%s|%s)" %
+                                          (snapshotid, vol, device))
+                    counter += 1
 
 
 def main():
@@ -493,10 +526,15 @@ def main():
     parser.add_argument('-g', '--max_age',
                         type=str, default=[],
                         metavar='ARG', nargs=2,
-                        help='Maximum snapshot age to keep (<int> <s/m/h/d/w/M/y>) (ex: 1 h for one hour)')
+                        help='Maximum snapshot age to keep \
+                        (<int> <s/m/h/d/w/M/y>) (ex: 1 h for one hour)')
+    parser.add_argument('-d', '--keep_last_snapshots',
+                        action='store', default=0, type=int,
+                        help='Keep the x last snapshots')
     parser.add_argument('-n', '--no_snap',
                         action='store_true', default=False,
-                        help='Do not make snapshot (useful when combien to -g option)')
+                        help='Do not make snapshot \
+                        (useful when combien to -g option)')
 
     parser.add_argument('-f', '--file_output', metavar='FILE',
                         default=None, action='store', type=str,
@@ -546,7 +584,8 @@ def main():
                                             arg.tags, arg.dry_run, arg.timeout,
                                             arg.no_hot_snap, arg.limit,
                                             arg.no_root_device, arg.max_age,
-                                            arg.no_snap)
+                                            arg.no_snap,
+                                            arg.keep_last_snapshots)
         # Calculate max snapshot age
         if len(arg.max_age) > 0:
             selected_instances.calulate_max_snap_age()

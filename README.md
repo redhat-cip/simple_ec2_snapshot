@@ -58,11 +58,11 @@ Use the dry run mode (enabled by default) to see what actions will be performed 
 2015-01-26 17:05:25,954 [INFO] Connecting to AWS
 2015-01-26 17:05:25,955 [INFO] Getting instances information
 2015-01-26 17:05:28,341 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb)
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-22465c25(/dev/sda)
 2015-01-26 17:05:28,341 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda) - dry-run
-2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda)
+2015-01-26 17:05:28,341 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb)
 ```
 
 ## Run mode
@@ -116,8 +116,8 @@ In auto-scaling groups, you normally have x time the same running intance. Snaps
 2015-01-26 17:11:27,561 [INFO] Connecting to AWS
 2015-01-26 17:11:27,562 [INFO] Getting instances information
 2015-01-26 17:11:29,659 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
+2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb)
+2015-01-26 17:11:29,659 [INFO] Hot snapshot made for vol-22465c25(/dev/sda)
 2015-01-26 17:11:29,659 [INFO] Working on instance i-6f6ec08b (instance-name1)
 2015-01-26 17:11:29,660 [INFO] The requested limit of snapshots has been reached: 1
 ```
@@ -132,9 +132,9 @@ Still for auto-scaling groups, your root device may not be required to snapshot.
 2015-01-26 17:11:50,757 [INFO] Connecting to AWS
 2015-01-26 17:11:50,758 [INFO] Getting instances information
 2015-01-26 17:11:52,708 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
+2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb)
 2015-01-26 17:11:52,708 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
+2015-01-26 17:11:52,708 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb)
 ```
 
 ## Snapshot retention
@@ -149,15 +149,15 @@ So for example, if you want to keep snapshots for 3 weeks and delete the old one
 Here is a basic example where I want to delete snapshots older than 10 days:
 ```
 > ./simplec2snap.py -t Name "instance-name*" -n -g 10 d
-2015-01-26 17:21:33,616 [INFO] == Launching dry run mode ==
-2015-01-26 17:21:33,616 [INFO] Connecting to AWS
-2015-01-26 17:21:33,617 [INFO] Getting instances information
-2015-01-26 17:21:36,201 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:21:36,334 [INFO] Deleting snapshot snap-a8afba59
-2015-01-26 17:21:36,462 [INFO] Deleting snapshot snap-adafba5c
-2015-01-26 17:21:36,462 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:21:36,566 [INFO] Deleting snapshot snap-b1aebb40
-2015-01-26 17:21:36,683 [INFO] Deleting snapshot snap-b2aebb43
+2015-01-28 10:12:11,216 [INFO] == Launching dry run mode ==
+2015-01-28 10:12:11,217 [INFO] Connecting to AWS
+2015-01-28 10:12:11,217 [INFO] Getting instances information
+2015-01-28 10:12:13,080 [INFO] Working on instance i-e16cc205 (pmavro-test2)
+2015-01-28 10:12:14,109 [INFO] Deleting snapshot snap-b427c144 (vol-fa415bfd|/dev/sdb)
+2015-01-28 10:12:14,205 [INFO] Deleting snapshot snap-a327c153 (vol-22465c25|/dev/sda)
+2015-01-28 10:12:14,205 [INFO] Working on instance i-6f6ec08b (pmavro-test1)
+2015-01-28 10:12:14,321 [INFO] Deleting snapshot snap-a627c156 (vol-9d465c9a|/dev/sda)
+2015-01-28 10:12:14,440 [INFO] Deleting snapshot snap-a927c159 (vol-9c465c9b|/dev/sdb)
 ```
 
 Here -n is used to not make snapshots, only delete olds. But you can ask on the same line to make snapshots AND remove old ones:
@@ -167,15 +167,31 @@ Here -n is used to not make snapshots, only delete olds. But you can ask on the 
 2015-01-26 17:22:43,263 [INFO] Connecting to AWS
 2015-01-26 17:22:43,264 [INFO] Getting instances information
 2015-01-26 17:22:46,217 [INFO] Working on instance i-e16cc205 (instance-name2)
-2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb) - dry-run
-2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-22465c25(/dev/sda) - dry-run
-2015-01-26 17:22:47,328 [INFO] Deleting snapshot snap-a8afba59
-2015-01-26 17:22:47,491 [INFO] Deleting snapshot snap-adafba5c
+2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-fa415bfd(/dev/sdb)
+2015-01-26 17:22:46,218 [INFO] Hot snapshot made for vol-22465c25(/dev/sda)
+2015-01-26 17:22:47,328 [INFO] Deleting snapshot snap-a8afba59 (vol-fa415bfd|/dev/sdb)
+2015-01-26 17:22:47,491 [INFO] Deleting snapshot snap-adafba5c (vol-22465c25|/dev/sda)
 2015-01-26 17:22:47,491 [INFO] Working on instance i-6f6ec08b (instance-name1)
-2015-01-26 17:22:47,491 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda) - dry-run
-2015-01-26 17:22:47,492 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb) - dry-run
-2015-01-26 17:22:47,669 [INFO] Deleting snapshot snap-b1aebb40
-2015-01-26 17:22:47,842 [INFO] Deleting snapshot snap-b2aebb43
+2015-01-26 17:22:47,491 [INFO] Hot snapshot made for vol-9d465c9a(/dev/sda)
+2015-01-26 17:22:47,492 [INFO] Hot snapshot made for vol-9c465c9b(/dev/sdb)
+2015-01-26 17:22:47,669 [INFO] Deleting snapshot snap-b1aebb40 (vol-9d465c9a|/dev/sda)
+2015-01-26 17:22:47,842 [INFO] Deleting snapshot snap-b2aebb43 (vol-9c465c9b|/dev/sdb)
+```
+
+## Keep at least x snapshots
+
+Another solution to manage the retention of your snapshots is to specify how many snapshots you want to keep. For example, if I have 5 snapshots per device of an instance and want to keep the last 4 ones:
+```
+> ./simplec2snap.py -t Name "instance-name*" -n -d 4
+2015-01-28 10:14:02,713 [INFO] == Launching dry run mode ==
+2015-01-28 10:14:02,713 [INFO] Connecting to AWS
+2015-01-28 10:14:02,713 [INFO] Getting instances information
+2015-01-28 10:14:04,328 [INFO] Working on instance i-e16cc205 (pmavro-test2)
+2015-01-28 10:14:05,316 [INFO] Deleting snapshot snap-b427c144 (vol-fa415bfd|/dev/sdb)
+2015-01-28 10:14:05,444 [INFO] Deleting snapshot snap-a327c153 (vol-22465c25|/dev/sda)
+2015-01-28 10:14:05,444 [INFO] Working on instance i-6f6ec08b (pmavro-test1)
+2015-01-28 10:14:05,540 [INFO] Deleting snapshot snap-a627c156 (vol-9d465c9a|/dev/sda)
+2015-01-28 10:14:05,654 [INFO] Deleting snapshot snap-a927c159 (vol-9c465c9b|/dev/sdb)
 ```
 
 ## Help
