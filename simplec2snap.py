@@ -408,6 +408,8 @@ class ManageSnapshot:
     def mk_rm_snapshot(self):
         """
         Create and remove snapshot on selected Instances ids
+
+        :rtype: int, int
         """
         error_number = 0
         old_snap_number = 0
@@ -477,6 +479,8 @@ class ManageSnapshot:
 
         :param iid: EC2 instance ID
         :type iid: object
+
+        :rtype: bool
         """
         return_code = 0
 
