@@ -230,18 +230,34 @@ class ManageSnapshot:
         # Create Instance object
         for iid in self._instance_list:
             # Get instance elements
-            instance = self._conn.get_all_instances(instance_ids=iid)[0].instances[0]
+            try:
+                instance = self._conn.get_all_instances(instance_ids=iid)[0].instances[0]
+            except Exception as e:
+                self.logger.critical("Could not get instance information: %s"
+                                     % e)
+                continue
+
             name = instance.tags['Name']
             state = instance.state
             root_dev = instance.root_device_name
             instance_id = Instance(iid, name, state, root_dev)
             self._instances.append(instance_id)
+
             # Set disks
             filter = {'attachment.instance-id': iid}
-            vol = self._conn.get_all_volumes(filters=filter)
+            try:
+                vol = self._conn.get_all_volumes(filters=filter)
+            except Exception as e:
+                self.logger.critical("Could not get volumes: %s" % e)
+                continue
+
             for device in vol:
                 filter = {'block-device-mapping.volume-id': device.id}
-                volumesinstance = self._conn.get_all_instances(filters=filter)
+                try:
+                    volumesinstance = self._conn.get_all_instances(filters=filter)
+                except Exception as e:
+                    self.logger.critical("Could not get block device mapping information: %s" % e)
+                    continue
                 ids = [z for k in volumesinstance for z in k.instances]
                 for s in ids:
                     instance_id.add_disk(device.id, device.attach_data.device)
@@ -263,8 +279,12 @@ class ManageSnapshot:
                 key = ''.join(['tag:', tag[0]])
                 value = tag[1]
                 filter_tags[key] = value
-
-            reservations = self._conn.get_all_instances(filters=filter_tags)
+            try:
+                reservations = self._conn.get_all_instances(filters=filter_tags)
+            except Exception as e:
+                self.logger.critical("Can't filter instance reservation: %s"
+                                     % e)
+                sys.exit(1)
             instances = [i for r in reservations for i in r.instances]
             for instance in instances:
                 # Do not keep terminated instances
@@ -306,7 +326,12 @@ class ManageSnapshot:
 
         :param iid: EC2 instance ID
         :type iid: str
+
+        :return rcode: 0 ok / 1 failed
+        :rtype: bool
         """
+        rcode = 0
+
         # Name cold and hot snapshots
         if self._cold_snap is False:
             stype = 'Hot'
@@ -325,16 +350,22 @@ class ManageSnapshot:
                                  ' (', iid.name, ') - ', stype, ' ', device,
                                  ' (', vol, ')'])
             if self._dry_run is False:
-                snap_id = self._conn.create_snapshot(vol, snap_name)
-                snap_id.add_tags({'type': stype,
-                                  'volume': vol,
-                                  'device': device,
-                                  'instance name': iid.name})
+                try:
+                    snap_id = self._conn.create_snapshot(vol, snap_name)
+                    snap_id.add_tags({'type': stype,
+                                      'volume': vol,
+                                      'device': device,
+                                      'instance name': iid.name})
+                except Exception as e:
+                    self.logger.critical("%s snapshot failed for %s(%s) [%s]" %
+                                         (stype, vol, device, e))
+                    rcode = 1
                 self.logger.info("%s snapshot made for %s(%s) - %s" %
                                  (stype, vol, device, snap_id.id))
             else:
                 self.logger.info("%s snapshot made for %s(%s)" %
                                  (stype, vol, device))
+        return rcode
 
     def calulate_max_snap_age(self):
         """
@@ -378,8 +409,12 @@ class ManageSnapshot:
         """
         Create and remove snapshot on selected Instances ids
         """
+        error_number = 0
+        old_snap_number = 0
+
         counter = 0
         for iid in self._instances:
+
             self.logger.info("Working on instance %s (%s)" %
                              (iid.instance_id, iid.name))
 
@@ -398,24 +433,43 @@ class ManageSnapshot:
                     if self._cold_snap is True:
                         self.logger.info('Instance is going to be shutdown')
                     if self._cold_snap is True and self._dry_run is False:
-                        self._conn.stop_instances(instance_ids=[iid.instance_id])
+                        try:
+                            self._conn.stop_instances(instance_ids=[iid.instance_id])
+                        except Exception as e:
+                            self.logger.critical("Instance failed to stop: %s"
+                                                 % e)
+                            error_number += 1
+                            continue
                         if self._check_inst_state(iid, 'stopped') is False:
                             continue
 
                 # Creating Snapshots
-                self._create_inst_snap(iid)
+                rcode = self._create_inst_snap(iid)
+                if rcode != 0:
+                    error_number += 1
 
                 # Starting VM if was running
                 if iid.initial_state == 'running':
                     if self._cold_snap is True:
                         self.logger.info('Instance is going to be started')
                     if self._cold_snap is True and self._dry_run is False:
-                        self._conn.start_instances(instance_ids=[iid.instance_id])
+                        try:
+                            self._conn.start_instances(instance_ids=[iid.instance_id])
+                        except Exception as e:
+                            self.logger.critical("Instance failed to start: %s"
+                                                 % e)
+                            # Only increment errors if snapshot succeed
+                            if rcode == 0:
+                                error_number += 1
                         self._check_inst_state(iid, 'running')
 
             # Delete old Snapshots
             if len(self._max_age) > 0 or self._keep_last_snapshots > 0:
-                self._remove_old_snap(iid)
+                old_snap_ret = self._remove_old_snap(iid)
+                if old_snap_ret != 0:
+                    old_snap_number += 1
+
+        return error_number, old_snap_number
 
     def _remove_old_snap(self, iid):
         """
@@ -424,13 +478,18 @@ class ManageSnapshot:
         :param iid: EC2 instance ID
         :type iid: object
         """
+        return_code = 0
+
         disks = iid.get_disks()
         for vol, device in disks.iteritems():
             snapshots = self._conn.get_all_snapshots(filters={'volume-id': vol})
             snapshots_tstamp = {}
 
             for snapshot in snapshots:
-                snap_date = snapshot.start_time
+                try:
+                    snap_date = snapshot.start_time
+                except:
+                    return_code = 1
                 timestamp = datetime.datetime.strptime(snap_date,
                                                        '%Y-%m-%dT%H:%M:%S.000Z')
                 self.logger.debug("Volume %s(%s) has snapshot %s on %s" %
@@ -443,7 +502,10 @@ class ManageSnapshot:
                         self.logger.info("Deleting snapshot %s (%s|%s)" %
                                          (snapshot.id, vol, device))
                         if self._dry_run is False:
-                            snapshot.delete()
+                            try:
+                                snapshot.delete()
+                            except:
+                                return_code = 1
                     else:
                         self.logger.debug("Do not delete snapshot %s" %
                                           snapshot.id)
@@ -455,19 +517,23 @@ class ManageSnapshot:
             # Kepp at least the desired number of snapshots
             if self._keep_last_snapshots > 0:
                 counter = 1
-                # Sort snapshots by timestamp
+                # Sort snapshots by timestamp and delete oldest
                 snapshots_tstamp = OrderedDict(sorted(snapshots_tstamp.items(), key=lambda v: v[1]))
                 for snapshotid, delta_tstamp in snapshots_tstamp.iteritems():
                     if counter > self._keep_last_snapshots:
                         self.logger.info("Deleting snapshot %s (%s|%s)" %
                                          (snapshotid, vol, device))
                         if self._dry_run is False:
-                            snapshot = self._conn.get_all_snapshots(snapshot_ids=snapshotid)
-                            snapshot[0].delete()
+                            try:
+                                snapshot = self._conn.get_all_snapshots(snapshot_ids=snapshotid)
+                                snapshot[0].delete()
+                            except Exception as e:
+                                self.logger.critical("Could not delete snapshot %s(%s|%s) [%s]" % (snapshotid, vol, device, e))
                     else:
                         self.logger.debug("Do not delete snapshot %s (%s|%s)" %
                                           (snapshotid, vol, device))
                     counter += 1
+        return return_code
 
 
 def main():
@@ -593,9 +659,14 @@ def main():
         if len(arg.max_age) > 0:
             selected_instances.calulate_max_snap_age()
         # Launch snapshot
-        selected_instances.mk_rm_snapshot()
+        num_mk_err, num_rm_err = selected_instances.mk_rm_snapshot()
 
-        sys.exit(0)
+        if num_mk_err == 0 and num_rm_err == 0:
+            sys.exit(0)
+        else:
+            print("Number of snapshots errors: %s" % num_mk_err)
+            print("Number of snapshots deletion errors: %s" % num_rm_err)
+            sys.exit(2)
 
 if __name__ == "__main__":
     main()
