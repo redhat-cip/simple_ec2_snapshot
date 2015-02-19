@@ -13,6 +13,14 @@
 #  On Debian: aptitude install python-boto
 #  With pip: pip install boto
 
+#
+# On the overall:
+# * Could have better Exception catching by specifying types
+# * Could make separated method for readability (delete/create/argparse/etc)
+# * Could reduce number of call to API, by directly storing Instance and not
+# creating a second custom Instance object
+# * Could change returns of 1/0 to real Boolean
+
 import argparse
 import sys
 import boto.ec2
@@ -235,6 +243,8 @@ class ManageSnapshot:
             except Exception as e:
                 self.logger.critical("Could not get instance information: %s"
                                      % e)
+                # Continuing to manipulate 'instance' while having an exception
+                # raised, this should be exit / return out of the method
                 continue
 
             name = instance.tags['Name']
@@ -249,6 +259,8 @@ class ManageSnapshot:
                 vol = self._conn.get_all_volumes(filters=filter)
             except Exception as e:
                 self.logger.critical("Could not get volumes: %s" % e)
+                # Continuing to manipulate 'vol' while having an exception
+                # raised, this should be exit / return out of the method
                 continue
 
             for device in vol:
@@ -257,6 +269,9 @@ class ManageSnapshot:
                     volumesinstance = self._conn.get_all_instances(filters=filter)
                 except Exception as e:
                     self.logger.critical("Could not get block device mapping information: %s" % e)
+                    # Continuing to manipulate 'volumesinstance' while having
+                    # an exception raised, this should be exit / return out of
+                    # the method
                     continue
                 ids = [z for k in volumesinstance for z in k.instances]
                 for s in ids:
@@ -284,6 +299,8 @@ class ManageSnapshot:
             except Exception as e:
                 self.logger.critical("Can't filter instance reservation: %s"
                                      % e)
+                # Program exit here, but not previously.
+                # What about other instances/volumes
                 sys.exit(1)
             instances = [i for r in reservations for i in r.instances]
             for instance in instances:
@@ -303,7 +320,8 @@ class ManageSnapshot:
         :param expected_state: instance expected state state
         :type expected_state: str
 
-        :returns: Boolean
+        :returns: True or False depending on result
+        :rtype: Boolean
         """
         retry = 5
         counter = 0
@@ -327,16 +345,14 @@ class ManageSnapshot:
         :param iid: EC2 instance ID
         :type iid: str
 
+        # Why not returning True or False rather than 0/1 ?
         :return rcode: 0 ok / 1 failed
-        :rtype: bool
+        :rtype: int
         """
         rcode = 0
 
         # Name cold and hot snapshots
-        if self._cold_snap is False:
-            stype = 'Hot'
-        else:
-            stype = 'Cold'
+        stype = 'Cold' if self._cold_snap is True else 'Hot'
 
         disks = iid.get_disks()
         for vol, device in disks.iteritems():
@@ -385,6 +401,13 @@ class ManageSnapshot:
             sys.exit(1)
 
         # Calculate the maximum allowed snapshot age
+
+        # Pretty sure there is a better way to do the math.
+        # But first why selecting seconds? Why not days?
+        # Don't see someone removing snapshot after 42 seconds
+        #
+        # Forcing 'days' as unit makes all other compute useless and seems like
+        # a decent mesure to me
         if self._max_age[1] == 's':
             self._max_age_sec = self._max_age[0]
         elif self._max_age[1] == 'm':
@@ -407,8 +430,10 @@ class ManageSnapshot:
 
     def mk_rm_snapshot(self):
         """
+        # Why creating a function to do both? It seems like a complex method
         Create and remove snapshot on selected Instances ids
 
+        :returns a,b: what is a, what is b
         :rtype: int, int
         """
         error_number = 0
@@ -442,6 +467,9 @@ class ManageSnapshot:
                                                  % e)
                             error_number += 1
                             continue
+                        # What is this if supposed to do?
+                        # If the stopping failed, should we skip creating snap ?
+                        # Or log something ?
                         if self._check_inst_state(iid, 'stopped') is False:
                             continue
 
@@ -460,6 +488,8 @@ class ManageSnapshot:
                         except Exception as e:
                             self.logger.critical("Instance failed to start: %s"
                                                  % e)
+                            # That comment is confusing espcially because of
+                            # l.467
                             # Only increment errors if snapshot succeed
                             if rcode == 0:
                                 error_number += 1
@@ -480,7 +510,9 @@ class ManageSnapshot:
         :param iid: EC2 instance ID
         :type iid: object
 
-        :rtype: bool
+        # Why using an integer here while this is clearly a Boolean?
+        :returns: 0 if snap deleted 1 otherwise
+        :rtype: int
         """
         return_code = 0
 
@@ -490,6 +522,10 @@ class ManageSnapshot:
             snapshots_tstamp = {}
 
             for snapshot in snapshots:
+                # Why is this try/except here?
+                # Could add except + Exception type and log something
+                # Does it make sense to continue / access data in the next lines
+                # while you had an issue assigning this variable 'snap_date' ?
                 try:
                     snap_date = snapshot.start_time
                 except:
@@ -550,6 +586,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Command args
+    # Could move this block to another function to avoid overloading main method
     parser.add_argument('-r', '--region', action='store',
                         type=str, default=None, metavar='REGION',
                         help='Set AWS region (ex: eu-west-1)')
@@ -665,12 +702,11 @@ def main():
         # Launch snapshot
         num_mk_err, num_rm_err = selected_instances.mk_rm_snapshot()
 
-        if num_mk_err == 0 and num_rm_err == 0:
-            sys.exit(0)
-        else:
+        if num_mk_err != 0 or num_rm_err != 0:
             print("Number of snapshots errors: %s" % num_mk_err)
             print("Number of snapshots deletion errors: %s" % num_rm_err)
             sys.exit(2)
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
