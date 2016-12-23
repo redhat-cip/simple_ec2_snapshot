@@ -508,7 +508,8 @@ class ManageSnapshot:
                         if self._dry_run is False:
                             try:
                                 snapshot.delete()
-                            except:
+                            except Exception as e:
+                                self.logger.error("Error deleting snapshot %s with error %s" % (snapshot.id, e))
                                 return_code = 1
                     else:
                         self.logger.debug("Do not delete snapshot %s" %
